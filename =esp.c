@@ -5,9 +5,11 @@
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
+#include <time.h>
 
 #define API_KEY "AIzaSyD_5JkJaZr60O2FZ80H84HL9u6lAjgrZWI"
 #define DATABASE_URL "https://dbvending-1b336-default-rtdb.firebaseio.com"
+#define MAX_OFFLINE_TRANSACTIONS 50
 
 FirebaseData fbdo;
 FirebaseAuth auth;
@@ -45,19 +47,53 @@ bool wasDisconnected = false;
 bool resetPending = false;
 String pendingResetData = "";
 
+
+
+struct OfflineTransaction {
+    int productIndex;
+    float amount;
+    char date[11];
+    char time[9];
+    int remaining;
+};
+
+OfflineTransaction offlineTransactions[MAX_OFFLINE_TRANSACTIONS];
+int offlineTransactionCount = 0;
+
+// Add this function to store offline transactions
+void storeOfflineTransaction(int productIndex, int newStock) {
+    if (offlineTransactionCount < MAX_OFFLINE_TRANSACTIONS) {
+        OfflineTransaction* transaction = &offlineTransactions[offlineTransactionCount];
+        transaction->productIndex = productIndex;
+        transaction->amount = products[productIndex].price;
+        transaction->remaining = newStock;
+
+        struct tm timeinfo;
+        if (getLocalTime(&timeinfo)) {
+            strftime(transaction->date, sizeof(transaction->date), "%Y-%m-%d", &timeinfo);
+            strftime(transaction->time, sizeof(transaction->time), "%H:%M:%S", &timeinfo);
+        } else {
+            strcpy(transaction->date, "0000-00-00");
+            strcpy(transaction->time, "00:00:00");
+        }
+
+        offlineTransactionCount++;
+        Serial.println("Stored offline transaction. Total: " + String(offlineTransactionCount));
+    } else {
+        Serial.println("Offline transaction storage full. Cannot store more.");
+    }
+}
+
 // Function prototypes
-void updateStatusInFirebase();
 bool updateProductData();
 void sendUpdateToArduino();
 void updateStockInFirebase(String data);
-bool checkArduinoConnection();
 void updateESP32Presence();
 void handleRoot();
+void clearAllTransactions();
+void removeAllUsersExceptOne();
+void updateUserDataOnReset();
 
-bool checkArduinoConnection() {
-  // Implement the actual check here. For now, we'll assume it's always connected.
-  return true;
-}
 
 bool checkConnection() {
   bool currentlyConnected = (WiFi.status() == WL_CONNECTED) && Firebase.ready();
@@ -69,15 +105,6 @@ bool checkConnection() {
   return currentlyConnected;
 }
 
-void updateStatusInFirebase() {
-  if (Firebase.RTDB.setBool(&fbdo, "/esp_status/esp_wifi", WiFi.status() == WL_CONNECTED) &&
-      Firebase.RTDB.setBool(&fbdo, "/esp_status/esp_database", Firebase.ready()) &&
-      Firebase.RTDB.setBool(&fbdo, "/esp_status/esp_mega", checkArduinoConnection())) {
-    Serial.println("Status updated in Firebase");
-  } else {
-    Serial.println("Failed to update status in Firebase");
-  }
-}
 
 void updateESP32Presence() {
   presenceCounter = (presenceCounter % 5) + 1;
@@ -120,15 +147,6 @@ void setup() {
   }
   Serial.println("//");
 
-  Serial.print("Connecting to Mega ...");
-  if (checkArduinoConnection()) {
-    Serial.println("Mega Connected!");
-  } else {
-    Serial.println("\nMega connection failed");
-    return;
-  }
-  Serial.println("//");
-
   Serial.print("Updating the Product ...");
   if (updateProductData()) {
     Serial.println("Product Updated!");
@@ -142,6 +160,23 @@ void setup() {
   Serial.println("HTTP server started");
 
   Serial.println("Then Start Counting ...");
+
+  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  
+  // Wait for time to be set
+  int retry = 0;
+  struct tm timeinfo;
+  while (!getLocalTime(&timeinfo) && retry < 10) {
+    Serial.println("Failed to obtain time, retrying...");
+    delay(1000);
+    retry++;
+  }
+  
+  if (retry == 10) {
+    Serial.println("Failed to obtain time after 10 retries. Continuing without accurate time.");
+  } else {
+    Serial.println("Time obtained successfully");
+  }
 }
 
 void loop() {
@@ -158,12 +193,13 @@ void loop() {
     if (wasDisconnected) {
       // Connection regained, request current stock first
       requestCurrentStock();
+      processOfflineTransactions();  // Add this line
       wasDisconnected = false;
       lastUpdateTime = currentMillis; // Reset the update timer
     }
     
     if (resetPending) {
-      updateFirebaseWithResetData(pendingResetData);
+      performReset();
     }
   } else {
     wasDisconnected = true;
@@ -243,20 +279,33 @@ void sendUpdateToArduino() {
 }
 
 void updateStockInFirebase(String data) {
-  // Parse the data
+  Serial.println("Updating stock in Firebase. Received data: " + data);
+
   int firstComma = data.indexOf(',');
   int secondComma = data.indexOf(',', firstComma + 1);
   
   int productIndex = data.substring(firstComma + 1, secondComma).toInt();
   int newStock = data.substring(secondComma + 1).toInt();
 
+  Serial.println("Product Index: " + String(productIndex) + ", New Stock: " + String(newStock));
+
   // Update the local product data
   products[productIndex].quantity = newStock;
 
   // Update Firebase
   String productId = products[productIndex].id;
-  if (Firebase.RTDB.setInt(&fbdo, "/tables/products/" + productId + "/product_quantity", newStock)) {
+  String updatePath = "/tables/products/" + productId + "/product_quantity";
+  Serial.println("Updating stock at path: " + updatePath);
+
+  if (!checkConnection()) {
+    Serial.println("No internet connection. Storing stock update for later.");
+    storeOfflineTransaction(productIndex, newStock);
+    return;
+  }
+
+  if (Firebase.RTDB.setInt(&fbdo, updatePath.c_str(), newStock)) {
     Serial.println("Stock updated in Firebase for product " + String(productIndex));
+    createTransaction(productIndex, newStock);
   } else {
     Serial.println("Failed to update stock in Firebase: " + fbdo.errorReason());
   }
@@ -306,16 +355,104 @@ void updateStocksInFirebase() {
 }
 
 void handleResetData(String data) {
-  Serial.println("Received reset data from Arduino");
-  
   if (!checkConnection()) {
     Serial.println("No internet connection. Storing reset data for later.");
     resetPending = true;
     pendingResetData = data;
     return;
   }
+  performReset();
+}
 
-  updateFirebaseWithResetData(data);
+void performReset() {
+  Serial.println("Performing reset...");
+  
+  // 1. Empty the products
+  for (int i = 0; i < 2; i++) {
+    String productPath = "/tables/products/" + products[i].id;
+    String productName = "Prod" + String(i + 1) + " Empty";
+    Firebase.RTDB.setString(&fbdo, productPath + "/product_name", productName);
+    Firebase.RTDB.setInt(&fbdo, productPath + "/product_price", 0);
+    Firebase.RTDB.setInt(&fbdo, productPath + "/product_quantity", 0);
+    
+    // Update local product data
+    products[i].name = productName;
+    products[i].price = 0;
+    products[i].quantity = 0;
+  }
+
+  // 2. Clear all transactions
+  Firebase.RTDB.deleteNode(&fbdo, "tables/transactions");
+
+  // 3. Clear all users (including the main admin)
+  Firebase.RTDB.deleteNode(&fbdo, "tables/user");
+
+  // 4. Recreate the main admin user
+  updateUserDataOnReset();
+
+  Serial.println("Reset completed.");
+  resetPending = false;
+  pendingResetData = "";
+}
+
+void clearAllTransactions() {
+  Serial.println("Clearing all transactions...");
+  if (Firebase.RTDB.deleteNode(&fbdo, "tables/transactions")) {
+    Serial.println("All transactions cleared successfully");
+  } else {
+    Serial.println("Failed to clear transactions: " + fbdo.errorReason());
+  }
+}
+
+void removeAllUsersExceptOne() {
+  Serial.println("Removing all users except the main admin...");
+  if (Firebase.RTDB.getJSON(&fbdo, "tables/user")) {
+    FirebaseJson *json = fbdo.to<FirebaseJson *>();
+    FirebaseJsonData result;
+    size_t count = json->iteratorBegin();
+    String mainAdminKey = "-O8FwN7EsoD-lRKW8z8z";  // Main admin user key
+
+    for (size_t i = 0; i < count; i++) {
+      String key;
+      int type = 0;
+      String value;
+      json->iteratorGet(i, type, key, value);
+      if (type == FirebaseJson::JSON_OBJECT && key != mainAdminKey) {
+        if (Firebase.RTDB.deleteNode(&fbdo, "tables/user/" + key)) {
+          Serial.println("Removed user: " + key);
+        } else {
+          Serial.println("Failed to remove user " + key + ": " + fbdo.errorReason());
+        }
+      }
+    }
+
+    json->iteratorEnd();
+    Serial.println("User removal completed. Only main admin remains.");
+  } else {
+    Serial.println("Failed to fetch users: " + fbdo.errorReason());
+  }
+}
+
+void updateUserDataOnReset() {
+  Serial.println("Updating user data on reset...");
+  String userPath = "tables/user/-O8FwN7EsoD-lRKW8z8z";
+  FirebaseJson json;
+  json.set("first_login", true);
+  json.set("u_role", "admin");
+  json.set("user_contact", "");
+  json.set("user_email", "");
+  json.set("user_id", "admin");
+  json.set("user_pass", "@4dmin_HC!");
+
+  Serial.println("Attempting to update user data in Firebase...");
+  if (Firebase.RTDB.setJSON(&fbdo, userPath.c_str(), &json)) {
+    Serial.println("User data updated successfully in Firebase");
+    Serial.print("Updated data: ");
+    Serial.println(json.raw());
+  } else {
+    Serial.println("Failed to update user data in Firebase");
+    Serial.println("Error reason: " + fbdo.errorReason());
+  }
 }
 
 // Add this new function to update Firebase with reset data
@@ -350,4 +487,78 @@ void updateFirebaseWithResetData(String data) {
   Serial.println("Reset data updated in Firebase");
   resetPending = false;
   pendingResetData = "";
+  
+  Serial.println("Now updating user data...");
+  updateUserDataOnReset();
+}
+
+void createTransaction(int productIndex, int newStock) {
+    if (!checkConnection()) {
+        storeOfflineTransaction(productIndex, newStock);
+        return;
+    }
+
+    Serial.println("Creating transaction for product index: " + String(productIndex));
+
+    OfflineTransaction transaction;
+    transaction.productIndex = productIndex;
+    transaction.amount = products[productIndex].price;
+    transaction.remaining = newStock;
+
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo)) {
+        strftime(transaction.date, sizeof(transaction.date), "%Y-%m-%d", &timeinfo);
+        strftime(transaction.time, sizeof(transaction.time), "%H:%M:%S", &timeinfo);
+    } else {
+        strcpy(transaction.date, "0000-00-00");
+        strcpy(transaction.time, "00:00:00");
+    }
+
+    String transactionPath = "/tables/transactions/" + String(random(0xffff), HEX) + String(random(0xffff), HEX);
+    Serial.println("Transaction path: " + transactionPath);
+
+    FirebaseJson json;
+    json.set("amount", transaction.amount);
+    json.set("date", transaction.date);
+    json.set("product_name", products[productIndex].name);
+    json.set("remaining", transaction.remaining);
+    json.set("time", transaction.time);
+
+    Serial.println("Attempting to create transaction in Firebase...");
+    if (Firebase.RTDB.setJSON(&fbdo, transactionPath.c_str(), &json)) {
+        Serial.println("Transaction created successfully");
+        Serial.print("Transaction data: ");
+        Serial.println(json.raw());
+    } else {
+        Serial.println("Failed to create transaction: " + fbdo.errorReason());
+        storeOfflineTransaction(productIndex, newStock);
+    }
+}
+
+// Add this function to process offline transactions
+void processOfflineTransactions() {
+    if (offlineTransactionCount == 0) return;
+
+    Serial.println("Processing " + String(offlineTransactionCount) + " offline transactions");
+    for (int i = 0; i < offlineTransactionCount; i++) {
+        OfflineTransaction* transaction = &offlineTransactions[i];
+        
+        String transactionPath = "/tables/transactions/" + String(random(0xffff), HEX) + String(random(0xffff), HEX);
+        
+        FirebaseJson json;
+        json.set("amount", transaction->amount);
+        json.set("date", transaction->date);
+        json.set("product_name", products[transaction->productIndex].name);
+        json.set("remaining", transaction->remaining);
+        json.set("time", transaction->time);
+
+        if (Firebase.RTDB.setJSON(&fbdo, transactionPath.c_str(), &json)) {
+            Serial.println("Offline transaction uploaded successfully");
+        } else {
+            Serial.println("Failed to upload offline transaction: " + fbdo.errorReason());
+            // If it fails, we'll keep it in the offline transactions
+            continue;
+        }
+    }
+    offlineTransactionCount = 0;
 }

@@ -1,11 +1,9 @@
 <?php
 require __DIR__.'/vendor/autoload.php';
-use Kreait\Firebase\Factory;
+require_once __DIR__ . '/firebase-init.php';
 
-// Initialize Firebase
-$factory = (new Factory)->withServiceAccount(__DIR__ . '/dbvending-1b336-firebase-adminsdk-m26i6-688c7d0c77.json')
-                        ->withDatabaseUri('https://dbvending-1b336-default-rtdb.firebaseio.com');
-$database = $factory->createDatabase();
+// Use the global $database variable
+global $database;
 
 // Fetch products
 $productsRef = $database->getReference('tables/products');

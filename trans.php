@@ -2,7 +2,7 @@
 session_start();
 
 require __DIR__.'/vendor/autoload.php';
-use Kreait\Firebase\Factory;
+require_once __DIR__ . '/firebase-init.php';
 
 // Prevent caching
 header("Cache-Control: no-cache, no-store, must-revalidate");
@@ -15,22 +15,13 @@ header("Location: login.php");
 exit();
 }
 
-// Initialize Firebase
-$factory = (new Factory)
-->withServiceAccount(__DIR__ . '/dbvending-1b336-firebase-adminsdk-m26i6-688c7d0c77.json')
-->withDatabaseUri('https://dbvending-1b336-default-rtdb.firebaseio.com');
-
-$database = $factory->createDatabase();
+// Use the global $database variable
+global $database;
 
 // Fetch initial transaction logs
 $transactionLogsRef = $database->getReference("tables/transactions");
 $snapshot = $transactionLogsRef->getSnapshot();
 $initialTransactionLogs = $snapshot->getValue() ?: [];
-
-// Comment out or remove this filter temporarily
-// $filteredLogs = array_filter($initialTransactionLogs, function($log) use ($userId) {
-// return $log['user_id'] == $userId;
-// });
 
 // Instead, use all logs
 $filteredLogs = $initialTransactionLogs;

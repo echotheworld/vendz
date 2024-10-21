@@ -1,24 +1,11 @@
 <?php
 require __DIR__.'/vendor/autoload.php';
-use Kreait\Firebase\Factory;
+require_once __DIR__ . '/firebase-init.php';
 
 session_start();
 
-// Check if the file exists and is readable
-$credentialsFile = __DIR__ . '/dbvending-1b336-firebase-adminsdk-m26i6-688c7d0c77.json';
-if (!file_exists($credentialsFile)) {
-    die("Firebase credentials file not found: $credentialsFile");
-}
-if (!is_readable($credentialsFile)) {
-    die("Firebase credentials file is not readable: $credentialsFile");
-}
-
-// Initialize Firebase
-$factory = (new Factory)
-    ->withServiceAccount($credentialsFile)
-    ->withDatabaseUri('https://dbvending-1b336-default-rtdb.firebaseio.com');
-
-$database = $factory->createDatabase();
+// Use the global $database variable
+global $database;
 
 $error = '';
 
