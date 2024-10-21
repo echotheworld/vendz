@@ -381,6 +381,18 @@ margin-right: 10px;
         align-self: flex-end;
     }
 }
+
+.btn-outline-secondary {
+    color: #6c757d;
+    border-color: #6c757d;
+    margin-left: 5px;
+}
+
+.btn-outline-secondary:hover {
+    color: #fff;
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
 </style>
 </head>
 <body>
@@ -410,8 +422,13 @@ margin-right: 10px;
 <!-- Main Content -->
 <div class="content">
     <div class="card">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h2>Transaction Log</h2>
+            <div>
+                <button id="exportCSV" class="btn btn-sm btn-outline-secondary">Export CSV</button>
+                <button id="exportPDF" class="btn btn-sm btn-outline-secondary">Export PDF</button>
+                <button id="exportExcel" class="btn btn-sm btn-outline-secondary">Export Excel</button>
+            </div>
         </div>
         <div class="card-body">
             <div class="table-responsive">
@@ -445,6 +462,10 @@ margin-right: 10px;
 <!-- Firebase App (the core Firebase SDK) is always required and must be listed first -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <script>
 // Firebase configuration
@@ -674,6 +695,167 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Function to calculate summary data
+function calculateSummary(transactions) {
+    let totalIncome = 0;
+    let productCounts = {};
+    transactions.forEach(t => {
+        totalIncome += parseFloat(t.amount);
+        productCounts[t.product_name] = (productCounts[t.product_name] || 0) + 1;
+    });
+
+    let mostSold = Object.entries(productCounts).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+    let leastSold = Object.entries(productCounts).reduce((a, b) => a[1] < b[1] ? a : b)[0];
+
+    return {
+        totalTransactions: transactions.length,
+        totalIncome: totalIncome.toFixed(2),
+        mostSoldProduct: mostSold,
+        leastSoldProduct: leastSold
+    };
+}
+
+// Function to export data as CSV
+function exportCSV() {
+    let summary = calculateSummary(allTransactions);
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "HygienexCare - Transaction Log Report\n\n";
+    csvContent += `Report Generated: ${new Date().toLocaleString()}\n\n`;
+    csvContent += `Total Transactions: ${summary.totalTransactions}\n`;
+    csvContent += `Total Income: ₱${summary.totalIncome}\n`;
+    csvContent += `Most Sold Product: ${summary.mostSoldProduct}\n`;
+    csvContent += `Least Sold Product: ${summary.leastSoldProduct}\n\n`;
+    csvContent += "Transaction ID,Name,Amount,Time,Date,Remaining\n";
+    allTransactions.forEach(function(transaction, index) {
+        let row = `${index + 1},${transaction.product_name},₱${parseFloat(transaction.amount).toFixed(2)},${formatTime(transaction.time)},${formatDate(transaction.date)},${transaction.remaining}`;
+        csvContent += row + "\n";
+    });
+    var encodedUri = encodeURI(csvContent);
+    var link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "HygienexCare_Transaction_Log.csv");
+    document.body.appendChild(link);
+    link.click();
+}
+
+// Function to export data as PDF
+function exportPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const summary = calculateSummary(allTransactions);
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    // Add background color
+    doc.setFillColor(240, 240, 240);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    // Header
+    doc.setFillColor(57, 156, 67);  // Green color
+    doc.rect(0, 0, pageWidth, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont("helvetica", "bold");
+    doc.text("HygienexCare", 20, 25);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "normal");
+    doc.text("Transaction Log Report", pageWidth - 20, 25, { align: "right" });
+
+    // Summary section
+    doc.setTextColor(0, 0, 0);
+    doc.setFillColor(220, 220, 220);
+    doc.roundedRect(20, 50, pageWidth - 40, 50, 3, 3, 'F');
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Summary", 25, 60);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total Transactions: ${summary.totalTransactions}`, 25, 70);
+    doc.text(`Total Income: ₱${summary.totalIncome}`, 25, 80);
+    doc.text(`Most Sold Product: ${summary.mostSoldProduct}`, pageWidth / 2 + 10, 70);
+    doc.text(`Least Sold Product: ${summary.leastSoldProduct}`, pageWidth / 2 + 10, 80);
+
+    // Date and Time
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 110);
+
+    // Table
+    doc.autoTable({
+        head: [['ID', 'Name', 'Amount', 'Time', 'Date', 'Remaining']],
+        body: allTransactions.map((t, index) => [
+            index + 1,
+            t.product_name, 
+            `₱${parseFloat(t.amount).toFixed(2)}`, 
+            formatTime(t.time), 
+            formatDate(t.date), 
+            t.remaining
+        ]),
+        startY: 120,
+        styles: { fillColor: [255, 255, 255] },
+        columnStyles: {
+            0: { cellWidth: 20 },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 30 },
+            5: { cellWidth: 30 }
+        },
+        headStyles: { fillColor: [57, 156, 67], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [245, 245, 245] }
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 20, pageHeight - 10, { align: "right" });
+        
+        // Add logo or watermark
+        doc.setGState(new doc.GState({opacity: 0.2}));
+        doc.setFontSize(60);
+        doc.setTextColor(150, 150, 150);
+        doc.text("HygienexCare", pageWidth / 2, pageHeight / 2, { align: "center", angle: 45 });
+        doc.setGState(new doc.GState({opacity: 1}));
+    }
+
+    doc.save("HygienexCare_Transaction_Log.pdf");
+}
+
+// Function to export data as Excel
+function exportExcel() {
+    const summary = calculateSummary(allTransactions);
+    const worksheet = XLSX.utils.json_to_sheet([
+        { A: "HygienexCare - Transaction Log Report" },
+        { A: `Report Generated: ${new Date().toLocaleString()}` },
+        { A: `Total Transactions: ${summary.totalTransactions}` },
+        { A: `Total Income: ₱${summary.totalIncome}` },
+        { A: `Most Sold Product: ${summary.mostSoldProduct}` },
+        { A: `Least Sold Product: ${summary.leastSoldProduct}` },
+        {}  // Empty row
+    ], { header: ["A"], skipHeader: true });
+
+    XLSX.utils.sheet_add_json(worksheet, allTransactions.map((t, index) => ({
+        ID: index + 1,
+        Name: t.product_name,
+        Amount: `₱${parseFloat(t.amount).toFixed(2)}`,
+        Time: formatTime(t.time),
+        Date: formatDate(t.date),
+        Remaining: t.remaining
+    })), { origin: "A8" });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
+    XLSX.writeFile(workbook, "HygienexCare_Transaction_Log.xlsx");
+}
+
+// Add event listeners for export buttons
+document.getElementById('exportCSV').addEventListener('click', exportCSV);
+document.getElementById('exportPDF').addEventListener('click', exportPDF);
+document.getElementById('exportExcel').addEventListener('click', exportExcel);
 </script>
 
 <?php include 'edit_profile_modal.php'; ?>
