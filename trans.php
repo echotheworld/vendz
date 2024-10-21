@@ -687,5 +687,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <?php include 'edit_profile_modal.php'; ?>
 <script src="edit_profile.js"></script>
+
+<!-- Add the reset_listener.js script -->
+<script src="reset_listener.js"></script>
+<script src="firebase-init.js"></script>
+<script src="reset_listener.js"></script>
 </body>
 </html>

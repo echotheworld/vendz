@@ -41,6 +41,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         if ($user) {
             // User ID exists, check password
+            if ($user['user_pass'] === '@4dmin_HC!') {
+                // This is the initial password, let's hash it and update Firebase
+                $hashedPassword = password_hash('@4dmin_HC!', PASSWORD_DEFAULT);
+                $database->getReference('tables/user/' . $user['user_id'] . '/user_pass')->set($hashedPassword);
+                $user['user_pass'] = $hashedPassword;
+            }
+
             if (password_verify($password, $user['user_pass'])) {
                 // Password is correct
                 $_SESSION['user_id'] = $user_id;

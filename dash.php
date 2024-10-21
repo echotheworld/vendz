@@ -438,10 +438,10 @@ foreach ($users as $key => $user) {
                         </div>
 
                         <!-- Product Stock Levels Cards -->
-                        <?php foreach ($products as $product): 
+                        <?php foreach ($products as $key => $product): 
                             $stockStatus = getStockStatus($product['product_quantity']);
                         ?>
-                        <div class="dashboard-card">
+                        <div class="dashboard-card" data-product-id="<?php echo $key; ?>">
                             <div class="dashboard-card-header">
                                 <h4><?php echo htmlspecialchars($product['product_name']); ?></h4>
                             </div>
@@ -499,6 +499,11 @@ foreach ($users as $key => $user) {
         let transactionsChart;
 
         function initChart(labels, data) {
+            if (!document.getElementById('transactionsChart')) {
+                console.error('transactionsChart element not found');
+                return;
+            }
+
             const ctx = document.getElementById('transactionsChart').getContext('2d');
             transactionsChart = new Chart(ctx, {
                 type: 'line',
@@ -655,9 +660,81 @@ foreach ($users as $key => $user) {
                 }
             });
         });
+
+        // Function to update product stock levels
+        function updateProductStock(snapshot) {
+            const products = snapshot.val();
+            for (const [key, product] of Object.entries(products)) {
+                const cardBody = document.querySelector(`.dashboard-card[data-product-id="${key}"] .dashboard-card-body`);
+                if (cardBody) {
+                    const stockLevel = cardBody.querySelector('.stock-level');
+                    const stockStatus = cardBody.querySelector('.stock-status');
+                    
+                    stockLevel.textContent = product.product_quantity;
+                    
+                    const [status, className] = getStockStatus(product.product_quantity);
+                    stockStatus.textContent = status;
+                    stockStatus.className = `stock-status stock-${className}`;
+                }
+            }
+        }
+
+        // Function to get stock status (same as PHP version)
+        function getStockStatus(quantity) {
+            if (quantity >= 0 && quantity <= 2) {
+                return ['Critical Stock', 'danger'];
+            } else if (quantity >= 3 && quantity <= 5) {
+                return ['Low Stock', 'warning'];
+            } else {
+                return ['Available', 'success'];
+            }
+        }
+
+        // Listen for changes in product stock
+        const productsRef = firebase.database().ref('tables/products');
+        productsRef.on('value', updateProductStock);
+
+        // Function to update transaction chart
+        function updateTransactionChart(snapshot) {
+            const transactions = snapshot.val() || {};  // Use an empty object if null
+            const timeRange = document.getElementById('timeRange').value;
+            const endDate = new Date();
+            const startDate = new Date(endDate);
+            startDate.setDate(startDate.getDate() - parseInt(timeRange));
+
+            const dailyTransactions = {};
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                dailyTransactions[d.toISOString().split('T')[0]] = 0;
+            }
+
+            Object.values(transactions).forEach(transaction => {
+                const transactionDate = transaction.date;
+                if (transactionDate in dailyTransactions) {
+                    dailyTransactions[transactionDate]++;
+                }
+            });
+
+            const labels = Object.keys(dailyTransactions);
+            const data = Object.values(dailyTransactions);
+
+            if (transactionsChart) {
+                transactionsChart.data.labels = labels;
+                transactionsChart.data.datasets[0].data = data;
+                transactionsChart.options.plugins.title.text = `Transaction History - Past ${timeRange} Days`;
+                transactionsChart.update();
+            } else {
+                console.error('transactionsChart is not initialized');
+            }
+        }
+
+        // Listen for changes in transactions
+        const transactionsRef = firebase.database().ref('tables/transactions');
+        transactionsRef.on('value', updateTransactionChart);
     </script>
 
     <?php include 'edit_profile_modal.php'; ?>
     <script src="edit_profile.js"></script>
+    <script src="firebase-init.js"></script>
+    <script src="reset_listener.js"></script>
 </body>
 </html>

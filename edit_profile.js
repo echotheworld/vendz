@@ -2,8 +2,34 @@
 $(document).ready(function() {
     $('#editProfileLink').on('click', function(e) {
         e.preventDefault();
-        $('#editProfileModal').modal('show');
+        fetchUserData();
     });
+
+    function fetchUserData() {
+        $.ajax({
+            url: 'get_user_data.php',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    fillFormWithUserData(response.userData);
+                    $('#editProfileModal').modal('show');
+                } else {
+                    alert('Error fetching user data: ' + response.message);
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('An error occurred while fetching user data: ' + error);
+            }
+        });
+    }
+
+    function fillFormWithUserData(userData) {
+        $('#user_id').val(userData.user_id);
+        $('#user_email').val(userData.user_email);
+        $('#user_contact').val(userData.user_contact);
+        // Password fields are left empty
+    }
 
     $('#editProfileModal').on('hidden.bs.modal', function () {
         clearForm();
@@ -15,20 +41,31 @@ $(document).ready(function() {
 
     $('#saveProfileChanges').on('click', function() {
         if (validateForm()) {
+            var formData = {
+                user_id: $('#user_id').val(),
+                user_email: $('#user_email').val(),
+                user_contact: $('#user_contact').val(),
+                user_pass: $('#user_pass').val(),
+                user_pass_confirm: $('#user_pass_confirm').val()
+            };
+
             $.ajax({
                 url: 'update_profile.php',
                 type: 'POST',
-                data: $('#editProfileForm').serialize(),
+                data: formData,
                 dataType: 'json',
                 success: function(response) {
                     if (response.success) {
-                        alert('Profile updated successfully');
                         $('#editProfileModal').modal('hide');
+                        alert(response.message);
+                        // Reload the page after the alert is dismissed
+                        window.location.reload();
                     } else {
                         displayErrors(response.errors);
                     }
                 },
                 error: function(xhr, status, error) {
+                    console.error('AJAX Error:', status, error);
                     alert('An error occurred: ' + error);
                 }
             });
@@ -64,8 +101,8 @@ $(document).ready(function() {
         if (contact === '') {
             errors.user_contact = 'Contact number is required';
             isValid = false;
-        } else if (!/^\d{10,11}$/.test(contact)) {
-            errors.user_contact = 'Contact number must be 10-11 digits';
+        } else if (!/^\d{11}$/.test(contact)) {
+            errors.user_contact = 'Contact number must be 11 digits';
             isValid = false;
         }
 
