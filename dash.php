@@ -32,20 +32,26 @@ $transactions = $transactionsRef->getValue();
 
 // Function to get transaction counts for a given date range
 function getTransactionCounts($transactions, $startDate, $endDate) {
-    $dailyTransactions = [];
+    $dailyTransactions = [
+        'Product 1' => [],
+        'Product 2' => []
+    ];
     $currentDate = new DateTime($startDate);
     $endDateTime = new DateTime($endDate);
 
     while ($currentDate <= $endDateTime) {
-        $dailyTransactions[$currentDate->format('Y-m-d')] = 0;
+        $dateString = $currentDate->format('Y-m-d');
+        $dailyTransactions['Product 1'][$dateString] = 0;
+        $dailyTransactions['Product 2'][$dateString] = 0;
         $currentDate->modify('+1 day');
     }
 
     if ($transactions) {
         foreach ($transactions as $transaction) {
             $transactionDate = $transaction['date'];
-            if (isset($dailyTransactions[$transactionDate])) {
-                $dailyTransactions[$transactionDate]++;
+            $productIdentity = $transaction['product_identity'];
+            if (isset($dailyTransactions[$productIdentity][$transactionDate])) {
+                $dailyTransactions[$productIdentity][$transactionDate]++;
             }
         }
     }
@@ -373,6 +379,26 @@ foreach ($users as $key => $user) {
             font-weight: bold;
             margin: 10px 0; /* Add some vertical spacing */
         }
+
+        /* Styles for the troubleshoot button */
+        .troubleshoot-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 15px; /* Adjust this value to move the button lower */
+        }
+
+        /* Apply the 'Available' style to the troubleshoot button */
+        #troubleshootButton {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            display: inline-block;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -399,7 +425,8 @@ foreach ($users as $key => $user) {
         <nav class="sidebar" id="sidebar" data-user-role="<?php echo $userRole; ?>">
             <a href="dash.php" class="menu-item"><i class="fas fa-box"></i> System Status</a>
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
-            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction Log</a>
+            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
+            <a href="act.php" class="menu-item" id="activityLogLink"><i class="fas fa-history"></i> Activity Log</a>
             <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
         </nav>
 
@@ -408,6 +435,7 @@ foreach ($users as $key => $user) {
             <div class="card">
                 <div class="card-header">
                     <h2>System Status</h2>
+                    <p>Today's date: <strong><?php echo date('l, F j, Y'); ?></strong></p>
                 </div>
                 <div class="card-body">
                     <?php if (!empty($criticalStockProducts)): ?>
@@ -430,6 +458,21 @@ foreach ($users as $key => $user) {
                             <div class="dashboard-card-body">
                                 <i id="connectionIcon" class="fas fa-globe icon text-warning"></i>
                                 <p id="connectionStatus">Checking...</p>
+                                <div class="troubleshoot-container">
+                                    <button id="troubleshootButton" class="btn btn-primary" onclick="showTroubleshootModal()" style="display: none;">Troubleshoot</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Total Income Card -->
+                        <div class="dashboard-card">
+                            <div class="dashboard-card-header">
+                                <h4>Total Income</h4>
+                            </div>
+                            <div class="dashboard-card-body">
+                                <i class="fas fa-peso-sign icon text-success"></i>
+                                <p class="stock-level" id="totalIncome">0</p>
+                                <p>PHP Pesos</p>
                             </div>
                         </div>
 
@@ -444,7 +487,7 @@ foreach ($users as $key => $user) {
                             <div class="dashboard-card-body">
                                 <i class="fas fa-box icon text-primary"></i>
                                 <p class="stock-level"><?php echo $product['product_quantity']; ?></p>
-                                <p>in stock</p>
+                                <p>In Stock</p>
                                 <div class="stock-status stock-<?php echo $stockStatus[1]; ?>">
                                     <?php echo $stockStatus[0]; ?>
                                 </div>
@@ -505,12 +548,20 @@ foreach ($users as $key => $user) {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Daily Transactions',
-                        data: data,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1
-                    }]
+                    datasets: [
+                        {
+                            label: 'Product 1 (Napkins)',
+                            data: data['Product 1'],
+                            borderColor: 'rgb(75, 192, 192)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Product 2 (Wipes)',
+                            data: data['Product 2'],
+                            borderColor: 'rgb(255, 99, 132)',
+                            tension: 0.1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -543,7 +594,7 @@ foreach ($users as $key => $user) {
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return 'Transactions: ' + context.parsed.y;
+                                    return context.dataset.label + ': ' + context.parsed.y;
                                 }
                             }
                         },
@@ -573,7 +624,8 @@ foreach ($users as $key => $user) {
                 dataType: 'json',
                 success: function(response) {
                     transactionsChart.data.labels = response.labels;
-                    transactionsChart.data.datasets[0].data = response.data;
+                    transactionsChart.data.datasets[0].data = response.data['Product 1'];
+                    transactionsChart.data.datasets[1].data = response.data['Product 2'];
                     transactionsChart.options.plugins.title.text = `Transaction History - Past ${timeRange} Days`;
                     transactionsChart.update();
                 },
@@ -585,7 +637,7 @@ foreach ($users as $key => $user) {
 
         // Initial chart setup
         initChart(<?php echo json_encode(array_keys($dailyTransactions)); ?>, 
-                  <?php echo json_encode(array_values($dailyTransactions)); ?>);
+                  <?php echo json_encode($dailyTransactions); ?>);
 
         // Your web app's Firebase configuration
         var firebaseConfig = {
@@ -596,6 +648,7 @@ foreach ($users as $key => $user) {
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
 
+        let lastKnownStatus = 'Connecting';
         let lastPresenceValue = 0;
         let presenceChangeCount = 0;
 
@@ -613,6 +666,11 @@ foreach ($users as $key => $user) {
                             console.log('ESP32 presence changed:', currentPresence);
                             lastPresenceValue = currentPresence;
                             presenceChangeCount++;
+                            
+                            // If we were disconnected and received at least one presence update, show "Connecting"
+                            if (lastKnownStatus === 'Disconnected' && presenceChangeCount === 1) {
+                                updateConnectionUI('Connecting');
+                            }
                         }
                         
                         checkCount++;
@@ -626,34 +684,87 @@ foreach ($users as $key => $user) {
         }
 
         function updateConnectionStatus() {
+            // Immediately show last known status
+            updateConnectionUI(lastKnownStatus);
+
             checkESP32Presence().then(isConnected => {
                 if (isConnected) {
-                    document.getElementById('connectionIcon').className = 'fas fa-globe icon text-success';
-                    document.getElementById('connectionStatus').textContent = 'Connected';
+                    lastKnownStatus = 'Connected';
                 } else {
-                    document.getElementById('connectionIcon').className = 'fas fa-globe icon text-danger';
-                    document.getElementById('connectionStatus').textContent = 'Disconnected';
+                    lastKnownStatus = 'Disconnected';
                 }
+                updateConnectionUI(lastKnownStatus);
             });
         }
 
-        // Initial check
+        function updateConnectionUI(status) {
+            const connectionIcon = document.getElementById('connectionIcon');
+            const connectionStatus = document.getElementById('connectionStatus');
+            const troubleshootButton = document.getElementById('troubleshootButton');
+
+            switch(status) {
+                case 'Connected':
+                    connectionIcon.className = 'fas fa-globe icon text-success';
+                    connectionStatus.textContent = 'Connected';
+                    troubleshootButton.style.display = 'none';
+                    break;
+                case 'Disconnected':
+                    connectionIcon.className = 'fas fa-globe icon text-danger';
+                    connectionStatus.textContent = 'Disconnected';
+                    troubleshootButton.style.display = 'block';
+                    break;
+                case 'Connecting':
+                    connectionIcon.className = 'fas fa-globe icon text-warning';
+                    connectionStatus.textContent = 'Connecting...';
+                    troubleshootButton.style.display = 'none';
+                    break;
+                default:
+                    connectionIcon.className = 'fas fa-globe icon text-warning';
+                    connectionStatus.textContent = 'Unknown';
+                    troubleshootButton.style.display = 'none';
+            }
+        }
+
+        function showTroubleshootModal() {
+            $('#troubleshootModal').modal('show');
+        }
+
+        // Try to retrieve last known status from localStorage
+        lastKnownStatus = localStorage.getItem('lastKnownStatus') || 'Unknown';
+
+        // Initial update
+        updateConnectionUI(lastKnownStatus);
         updateConnectionStatus();
 
         // Check connection status every 10 seconds
         setInterval(updateConnectionStatus, 10000);
 
-        // Add this to the existing <script> tag, after line 630
+        // Save last known status before unloading the page
+        window.addEventListener('beforeunload', () => {
+            localStorage.setItem('lastKnownStatus', lastKnownStatus);
+        });
+
+        // Modify this part of the existing DOMContentLoaded event listener
         document.addEventListener('DOMContentLoaded', function() {
             const sidebar = document.getElementById('sidebar');
             const userRole = sidebar.dataset.userRole;
             const userManagementLink = document.getElementById('userManagementLink');
+            const activityLogLink = document.getElementById('activityLogLink'); // Add this line
 
-            userManagementLink.addEventListener('click', function(event) {
+            function restrictAccess(event, linkName) {
                 if (userRole !== 'admin') {
                     event.preventDefault();
-                    alert("You don't have permission to access User Management.");
+                    alert(`You don't have permission to access ${linkName}.`);
                 }
+            }
+
+            userManagementLink.addEventListener('click', function(event) {
+                restrictAccess(event, 'User Management');
+            });
+
+            // Add this new event listener for Activity Log
+            activityLogLink.addEventListener('click', function(event) {
+                restrictAccess(event, 'Activity Log');
             });
         });
 
@@ -690,40 +801,56 @@ foreach ($users as $key => $user) {
         const productsRef = firebase.database().ref('tables/products');
         productsRef.on('value', updateProductStock);
 
-        // Function to update transaction chart
+        // Function to update transaction chart and total income
         function updateTransactionChart(snapshot) {
-            const transactions = snapshot.val() || {};  // Use an empty object if null
+            const transactions = snapshot.val() || {};
             const timeRange = document.getElementById('timeRange').value;
             const endDate = new Date();
             const startDate = new Date(endDate);
             startDate.setDate(startDate.getDate() - parseInt(timeRange));
 
-            const dailyTransactions = {};
+            const dailyTransactions = {
+                'Product 1': {},
+                'Product 2': {}
+            };
+
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                dailyTransactions[d.toISOString().split('T')[0]] = 0;
+                const dateString = d.toISOString().split('T')[0];
+                dailyTransactions['Product 1'][dateString] = 0;
+                dailyTransactions['Product 2'][dateString] = 0;
             }
+
+            let totalIncome = 0;
 
             Object.values(transactions).forEach(transaction => {
                 const transactionDate = transaction.date;
-                if (transactionDate in dailyTransactions) {
-                    dailyTransactions[transactionDate]++;
+                const productIdentity = transaction.product_identity;
+                if (transactionDate in dailyTransactions[productIdentity]) {
+                    dailyTransactions[productIdentity][transactionDate]++;
                 }
+                totalIncome += parseFloat(transaction.amount) || 0;
             });
 
-            const labels = Object.keys(dailyTransactions);
-            const data = Object.values(dailyTransactions);
+            const labels = Object.keys(dailyTransactions['Product 1']);
+            const data = {
+                'Product 1': Object.values(dailyTransactions['Product 1']),
+                'Product 2': Object.values(dailyTransactions['Product 2'])
+            };
 
             if (transactionsChart) {
                 transactionsChart.data.labels = labels;
-                transactionsChart.data.datasets[0].data = data;
+                transactionsChart.data.datasets[0].data = data['Product 1'];
+                transactionsChart.data.datasets[1].data = data['Product 2'];
                 transactionsChart.options.plugins.title.text = `Transaction History - Past ${timeRange} Days`;
                 transactionsChart.update();
             } else {
                 console.error('transactionsChart is not initialized');
             }
+
+            document.getElementById('totalIncome').textContent = totalIncome.toFixed(2);
         }
 
-        // Listen for changes in transactions
+        // Keep the existing listener
         const transactionsRef = firebase.database().ref('tables/transactions');
         transactionsRef.on('value', updateTransactionChart);
     </script>
@@ -732,5 +859,38 @@ foreach ($users as $key => $user) {
     <script src="edit_profile.js"></script>
     <script src="firebase-init.js"></script>
     <script src="reset_listener.js"></script>
+
+    <!-- Add this modal at the end of the body, just before the closing </body> tag -->
+    <div class="modal fade" id="troubleshootModal" tabindex="-1" role="dialog" aria-labelledby="troubleshootModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="troubleshootModalLabel">Troubleshooting Steps</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <h6>Please follow these steps to reconnect your device:</h6>
+                    <ol>
+                        <li>Ensure the device is powered on.</li>
+                        <li>Verify your internet connection is active.</li>
+                        <li>Confirm the device is connected to the internet.</li>
+                        <li>If issues persist, press the reset button on the device.</li>
+                    </ol>
+                    <h6>To access the device's Wi-Fi manager:</h6>
+                    <p>Connect to the following network:</p>
+                    <ul>
+                        <li><strong>Wi-Fi Name:</strong> HygienexCare_AP</li>
+                        <li><strong>Wi-Fi Password:</strong> password</li>
+                    </ul>
+                    <p>Once connected, you can access the Wi-Fi manager to configure your device's network settings.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

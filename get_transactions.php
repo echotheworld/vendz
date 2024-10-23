@@ -43,8 +43,11 @@ $dailyTransactions = getTransactionCounts($transactions, $startDate, $endDate);
 
 // Prepare the response
 $response = [
-    'labels' => array_keys($dailyTransactions),
-    'data' => array_values($dailyTransactions)
+    'labels' => array_keys($dailyTransactions['Product 1']),
+    'data' => [
+        'Product 1' => array_values($dailyTransactions['Product 1']),
+        'Product 2' => array_values($dailyTransactions['Product 2'])
+    ]
 ];
 
 header('Content-Type: application/json');

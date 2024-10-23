@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#include <WebServer.h>
+//#include <WebServer.h>
 #include <DNSServer.h>
 #include <WiFiManager.h>
 #include <Firebase_ESP_Client.h>
@@ -10,13 +10,14 @@
 #define API_KEY "AIzaSyD_5JkJaZr60O2FZ80H84HL9u6lAjgrZWI"
 #define DATABASE_URL "https://dbvending-1b336-default-rtdb.firebaseio.com"
 #define MAX_OFFLINE_TRANSACTIONS 50
+#define WIFI_RESET_PIN 0
 
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
 WiFiManager wifiManager;
-WebServer server(80);
+//WebServer server(80);
 
 unsigned long lastUpdateTime = 0;
 const unsigned long updateInterval = 5000; // Check for updates every 5 seconds
@@ -27,15 +28,16 @@ int presenceCounter = 0;
 
 struct Product {
   String id;
+  String identity;  // Add this line
   String name;
   float price;
   int quantity;
-  bool changed;  // New field to track changes
+  bool changed;
 };
 
 Product products[2] = {
-  {"-O8GSb1L_mn9CLR1Z0Ly", "", 0, 0, false},
-  {"-O8GSldDvFUT5olxHCiX", "", 0, 0, false}
+  {"-O8GSb1L_mn9CLR1Z0Ly", "Product1", "", 0, 0, false},
+  {"-O8GSldDvFUT5olxHCiX", "Product2", "", 0, 0, false}
 };
 
 bool isConnectedToWiFi = false;
@@ -55,6 +57,7 @@ struct OfflineTransaction {
     char date[11];
     char time[9];
     int remaining;
+    char productIdentity[20];  // Add this line, adjust size as needed
 };
 
 OfflineTransaction offlineTransactions[MAX_OFFLINE_TRANSACTIONS];
@@ -67,6 +70,8 @@ void storeOfflineTransaction(int productIndex, int newStock) {
         transaction->productIndex = productIndex;
         transaction->amount = products[productIndex].price;
         transaction->remaining = newStock;
+        strncpy(transaction->productIdentity, products[productIndex].identity.c_str(), sizeof(transaction->productIdentity) - 1);
+        transaction->productIdentity[sizeof(transaction->productIdentity) - 1] = '\0';  // Ensure null-termination
 
         struct tm timeinfo;
         if (getLocalTime(&timeinfo)) {
@@ -113,11 +118,41 @@ void updateESP32Presence() {
   }
 }
 
+void setupWiFi() {
+  WiFi.mode(WIFI_STA); // Set WiFi to station mode
+  WiFi.begin(); // Try to connect using saved credentials
+
+  Serial.println("Connecting to WiFi...");
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) { // Try for about 10 seconds
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnected to WiFi");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+    isConnectedToWiFi = true;
+  } else {
+    Serial.println("\nFailed to connect to WiFi. Please use the reset button to enter AP mode.");
+    isConnectedToWiFi = false;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
+  pinMode(WIFI_RESET_PIN, INPUT_PULLUP);
   delay(1000);
   Serial.println("ESP32 Starting Up");
   Serial.println("//");
+
+  setupWiFi();
+
+  if (!isConnectedToWiFi) {
+    return;
+  }
 
   // WiFiManager
   wifiManager.autoConnect("HygienexCare_AP", "password");
@@ -155,9 +190,9 @@ void setup() {
   }
   Serial.println("//");
 
-  server.on("/", handleRoot);
-  server.begin();
-  Serial.println("HTTP server started");
+  //server.on("/", handleRoot);
+  //server.begin();
+  //Serial.println("HTTP server started");
 
   Serial.println("Then Start Counting ...");
 
@@ -180,6 +215,15 @@ void setup() {
 }
 
 void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost. Attempting to reconnect...");
+    setupWiFi();
+    if (!isConnectedToWiFi) {
+      delay(10000); // Wait 10 seconds before trying again
+      return;
+    }
+  }
+
   unsigned long currentMillis = millis();
   
   if (currentMillis - lastPresenceUpdateTime > presenceUpdateInterval) {
@@ -229,7 +273,8 @@ void loop() {
     lastUpdateTime = currentMillis;
   }
 
-  server.handleClient();
+  checkWiFiResetButton();
+  //server.handleClient();
   delay(10);
 }
 
@@ -237,6 +282,14 @@ bool updateProductData() {
   bool anyChanges = false;
   for (int i = 0; i < 2; i++) {
     products[i].changed = false;  // Reset change flag
+    if (Firebase.RTDB.getString(&fbdo, "/tables/products/" + products[i].id + "/product_identity")) {
+      String newIdentity = fbdo.stringData();
+      if (newIdentity != products[i].identity) {
+        products[i].identity = newIdentity;
+        products[i].changed = true;
+        anyChanges = true;
+      }
+    }
     if (Firebase.RTDB.getString(&fbdo, "/tables/products/" + products[i].id + "/product_name")) {
       String newName = fbdo.stringData();
       if (newName != products[i].name) {
@@ -269,9 +322,9 @@ void sendUpdateToArduino() {
   String updateString = "U,";
   for (int i = 0; i < 2; i++) {
     if (products[i].changed) {
-      updateString += products[i].name + "," + String(products[i].price, 2) + "," + String(products[i].quantity);
+      updateString += products[i].identity + "," + products[i].name + "," + String(products[i].price, 2) + "," + String(products[i].quantity);
     } else {
-      updateString += "NC,NC,NC";
+      updateString += "NC,NC,NC,NC";
     }
     if (i == 0) updateString += ",";
   }
@@ -279,49 +332,52 @@ void sendUpdateToArduino() {
 }
 
 void updateStockInFirebase(String data) {
-  Serial.println("Updating stock in Firebase. Received data: " + data);
+    Serial.println("Updating stock in Firebase. Received data: " + data);
 
-  int firstComma = data.indexOf(',');
-  int secondComma = data.indexOf(',', firstComma + 1);
-  
-  int productIndex = data.substring(firstComma + 1, secondComma).toInt();
-  int newStock = data.substring(secondComma + 1).toInt();
+    int firstComma = data.indexOf(',');
+    int secondComma = data.indexOf(',', firstComma + 1);
+    int thirdComma = data.indexOf(',', secondComma + 1);
+    
+    String productIdentity = data.substring(firstComma + 1, secondComma);
+    int productIndex = data.substring(secondComma + 1, thirdComma).toInt();
+    int newStock = data.substring(thirdComma + 1).toInt();
 
-  Serial.println("Product Index: " + String(productIndex) + ", New Stock: " + String(newStock));
+    Serial.println("Product Identity: " + productIdentity + ", Product Index: " + String(productIndex) + ", New Stock: " + String(newStock));
 
-  // Update the local product data
-  products[productIndex].quantity = newStock;
+    // Update the local product data
+    products[productIndex].quantity = newStock;
+    products[productIndex].identity = productIdentity;  // Add this line
 
-  // Update Firebase
-  String productId = products[productIndex].id;
-  String updatePath = "/tables/products/" + productId + "/product_quantity";
-  Serial.println("Updating stock at path: " + updatePath);
+    // Update Firebase
+    String productId = products[productIndex].id;
+    String updatePath = "/tables/products/" + productId + "/product_quantity";
+    Serial.println("Updating stock at path: " + updatePath);
 
-  if (!checkConnection()) {
-    Serial.println("No internet connection. Storing stock update for later.");
-    storeOfflineTransaction(productIndex, newStock);
-    return;
-  }
+    if (!checkConnection()) {
+        Serial.println("No internet connection. Storing stock update for later.");
+        storeOfflineTransaction(productIndex, newStock);
+        return;
+    }
 
-  if (Firebase.RTDB.setInt(&fbdo, updatePath.c_str(), newStock)) {
-    Serial.println("Stock updated in Firebase for product " + String(productIndex));
-    createTransaction(productIndex, newStock);
-  } else {
-    Serial.println("Failed to update stock in Firebase: " + fbdo.errorReason());
-  }
+    if (Firebase.RTDB.setInt(&fbdo, updatePath.c_str(), newStock)) {
+        Serial.println("Stock updated in Firebase for product " + productIdentity);
+        createTransaction(productIndex, newStock);
+    } else {
+        Serial.println("Failed to update stock in Firebase: " + fbdo.errorReason());
+    }
 }
 
-void handleRoot() {
-  String html = "<html><body><h1>ESP32 Status</h1>";
-  html += "<p>WiFi: " + String(isConnectedToWiFi ? "Connected" : "Disconnected") + "</p>";
-  html += "<p>Firebase: " + String(isConnectedToFirebase ? "Connected" : "Disconnected") + "</p>";
-  html += "<h2>Products:</h2>";
-  for (int i = 0; i < 2; i++) {
-    html += "<p>Product " + String(i+1) + ": " + products[i].name + ", Price: $" + String(products[i].price) + ", Quantity: " + String(products[i].quantity) + "</p>";
-  }
-  html += "</body></html>";
-  server.send(200, "text/html", html);
-}
+// void handleRoot() {
+//   String html = "<html><body><h1>ESP32 Status</h1>";
+//   html += "<p>WiFi: " + String(isConnectedToWiFi ? "Connected" : "Disconnected") + "</p>";
+//   html += "<p>Firebase: " + String(isConnectedToFirebase ? "Connected" : "Disconnected") + "</p>";
+//   html += "<h2>Products:</h2>";
+//   for (int i = 0; i < 2; i++) {
+//     html += "<p>Product " + String(i+1) + ": " + products[i].name + ", Price: $" + String(products[i].price) + ", Quantity: " + String(products[i].quantity) + "</p>";
+//   }
+//   html += "</body></html>";
+//   server.send(200, "text/html", html);
+// }
 
 void requestCurrentStock() {
   Serial.println("REQUEST_STOCK");
@@ -331,12 +387,18 @@ void handleCurrentStock(String data) {
   Serial.println("Received current stock from Arduino: " + data);
   int firstComma = data.indexOf(',');
   int secondComma = data.indexOf(',', firstComma + 1);
+  int thirdComma = data.indexOf(',', secondComma + 1);
+  int fourthComma = data.indexOf(',', thirdComma + 1);
   
-  int stock0 = data.substring(firstComma + 1, secondComma).toInt();
-  int stock1 = data.substring(secondComma + 1).toInt();
+  String identity0 = data.substring(firstComma + 1, secondComma);
+  int stock0 = data.substring(secondComma + 1, thirdComma).toInt();
+  String identity1 = data.substring(thirdComma + 1, fourthComma);
+  int stock1 = data.substring(fourthComma + 1).toInt();
 
   // Update local product data
+  products[0].identity = identity0;
   products[0].quantity = stock0;
+  products[1].identity = identity1;
   products[1].quantity = stock1;
 
   // Update Firebase
@@ -384,10 +446,13 @@ void performReset() {
   // 2. Clear all transactions
   Firebase.RTDB.deleteNode(&fbdo, "tables/transactions");
 
-  // 3. Clear all users (including the main admin)
+  // 3. Clear activity logs
+  Firebase.RTDB.deleteNode(&fbdo, "activity_logs");
+
+  // 4. Clear all users (including the main admin)
   Firebase.RTDB.deleteNode(&fbdo, "tables/user");
 
-  // 4. Recreate the main admin user
+  // 5. Recreate the main admin user
   updateUserDataOnReset();
 
   Serial.println("Reset completed.");
@@ -458,10 +523,10 @@ void updateUserDataOnReset() {
 // Add this new function to update Firebase with reset data
 void updateFirebaseWithResetData(String data) {
   // Parse and update Firebase
-  String items[6];
+  String items[8];
   int index = 0;
   int startPos = data.indexOf(',') + 1;
-  while (startPos > 0 && index < 6) {
+  while (startPos > 0 && index < 8) {
     int endPos = data.indexOf(',', startPos);
     if (endPos == -1) {
       items[index] = data.substring(startPos);
@@ -474,14 +539,16 @@ void updateFirebaseWithResetData(String data) {
 
   for (int i = 0; i < 2; i++) {
     String productPath = "/tables/products/" + products[i].id;
-    Firebase.RTDB.setString(&fbdo, productPath + "/product_name", items[i*3]);
-    Firebase.RTDB.setInt(&fbdo, productPath + "/product_price", items[i*3+1].toInt());
-    Firebase.RTDB.setInt(&fbdo, productPath + "/product_quantity", items[i*3+2].toInt());
+    Firebase.RTDB.setString(&fbdo, productPath + "/product_identity", items[i*4]);
+    Firebase.RTDB.setString(&fbdo, productPath + "/product_name", items[i*4+1]);
+    Firebase.RTDB.setInt(&fbdo, productPath + "/product_price", items[i*4+2].toInt());
+    Firebase.RTDB.setInt(&fbdo, productPath + "/product_quantity", items[i*4+3].toInt());
     
     // Update local product data
-    products[i].name = items[i*3];
-    products[i].price = items[i*3+1].toInt();
-    products[i].quantity = items[i*3+2].toInt();
+    products[i].identity = items[i*4];
+    products[i].name = items[i*4+1];
+    products[i].price = items[i*4+2].toInt();
+    products[i].quantity = items[i*4+3].toInt();
   }
 
   Serial.println("Reset data updated in Firebase");
@@ -520,6 +587,7 @@ void createTransaction(int productIndex, int newStock) {
     FirebaseJson json;
     json.set("amount", transaction.amount);
     json.set("date", transaction.date);
+    json.set("product_identity", products[productIndex].identity);  // Add this line
     json.set("product_name", products[productIndex].name);
     json.set("remaining", transaction.remaining);
     json.set("time", transaction.time);
@@ -548,6 +616,7 @@ void processOfflineTransactions() {
         FirebaseJson json;
         json.set("amount", transaction->amount);
         json.set("date", transaction->date);
+        json.set("product_identity", transaction->productIdentity);  // Add this line
         json.set("product_name", products[transaction->productIndex].name);
         json.set("remaining", transaction->remaining);
         json.set("time", transaction->time);
@@ -562,3 +631,24 @@ void processOfflineTransactions() {
     }
     offlineTransactionCount = 0;
 }
+
+void checkWiFiResetButton() {
+  if (digitalRead(WIFI_RESET_PIN) == LOW) {
+    delay(50); // Debounce
+    if (digitalRead(WIFI_RESET_PIN) == LOW) {
+      Serial.println("WiFi Reset button pressed. Starting AP mode...");
+      WiFiManager wifiManager;
+      wifiManager.resetSettings();
+      wifiManager.setConfigPortalTimeout(180); // Set timeout to 3 minutes
+      if (!wifiManager.startConfigPortal("HygienexCare_AP", "password")) {
+        Serial.println("Failed to connect and hit timeout");
+      } else {
+        Serial.println("Connected to new WiFi");
+      }
+      ESP.restart();
+    }
+  }
+}
+
+
+

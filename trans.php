@@ -3,6 +3,7 @@ session_start();
 
 require __DIR__.'/vendor/autoload.php';
 require_once __DIR__ . '/firebase-init.php';
+require_once __DIR__ . '/functions.php';  // Add this line
 
 // Prevent caching
 header("Cache-Control: no-cache, no-store, must-revalidate");
@@ -42,6 +43,24 @@ foreach ($users as $key => $user) {
     if ($user['user_id'] === $userId) {
         $userRole = $user['u_role'];
         break;
+    }
+}
+
+// Handle form submission for resetting transactions
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['reset_transactions'])) {
+    try {
+        // Delete all transactions
+        $transactionsRef = $database->getReference('tables/transactions');
+        $transactionsRef->remove();
+
+        // Log the action using the addLogEntry function
+        addLogEntry($_SESSION['user_id'], 'Reset Transactions', 'All transaction logs were cleared');
+
+        echo json_encode(['success' => true, 'message' => 'All transactions have been reset and the action has been logged.']);
+        exit;
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        exit;
     }
 }
 
@@ -326,30 +345,6 @@ animation: blinkHighlight 3s ease-in-out;
 50% { background-color: #fff998; }
 }
 
-.pagination {
-margin-top: 20px;
-text-align: right;
-}
-
-.pagination button {
-margin-left: 5px;
-padding: 6px 12px;
-background-color: #369c43 ;
-color: white;
-border: none;
-border-radius: 4px;
-cursor: pointer;
-transition: background-color 0.3s;
-}
-
-.pagination button:hover {
-background-color: #0056b3;
-}
-
-.pagination span {
-margin-right: 10px;
-}
-
 .card-body {
     padding: 20px;
 }
@@ -393,6 +388,40 @@ margin-right: 10px;
     background-color: #6c757d;
     border-color: #6c757d;
 }
+
+.pagination-container {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 15px;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+}
+
+.pagination button {
+    background-color: #369c43;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    margin: 0 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.pagination button:hover {
+    background-color: #2a7d35;
+}
+
+.pagination button:disabled {
+    background-color: #88c794;
+    cursor: not-allowed;
+}
+
+.pagination span {
+    margin: 0 10px;
+}
 </style>
 </head>
 <body>
@@ -416,21 +445,37 @@ margin-right: 10px;
         <nav class="sidebar" id="sidebar" data-user-role="<?php echo $userRole; ?>">
             <a href="dash.php" class="menu-item"><i class="fas fa-box"></i> System Status</a>
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
-            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction Log</a>
+            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
+            <a href="act.php" class="menu-item" id="activityLogLink"><i class="fas fa-history"></i> Activity Log</a>
             <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
-        </nav>
+        </nav>  
 <!-- Main Content -->
 <div class="content">
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h2>Transaction Log</h2>
             <div>
-                <button id="exportCSV" class="btn btn-sm btn-outline-secondary">Export CSV</button>
                 <button id="exportPDF" class="btn btn-sm btn-outline-secondary">Export PDF</button>
-                <button id="exportExcel" class="btn btn-sm btn-outline-secondary">Export Excel</button>
             </div>
         </div>
         <div class="card-body">
+            <!-- Add date filter form -->
+            <form id="dateFilterForm" class="mb-3">
+                <div class="form-row">
+                    <div class="col-md-4 mb-3">
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate" class="form-control">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate" class="form-control">
+                    </div>
+                    <div class="col-md-4 mb-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary">Filter</button>
+                        <button type="button" id="resetFilter" class="btn btn-secondary ml-2">Reset</button>
+                    </div>
+                </div>
+            </form>
             <div class="table-responsive">
                 <table class="table table-bordered table-hover" id="transactionTable">
                     <thead>
@@ -447,8 +492,11 @@ margin-right: 10px;
                 </table>
             </div>
             <div class="d-flex justify-content-between align-items-center mt-3">
-                <button id="resetButton" class="btn btn-danger" data-role="<?php echo $userRole; ?>" <?php echo $userRole !== 'admin' ? 'disabled' : ''; ?>>Reset Transactions</button>
-                <div id="pagination" class="pagination"></div>
+                <form id="resetForm" method="POST" action="trans.php" style="display: inline;">
+                    <input type="hidden" name="reset_transactions" value="1">
+                    <button type="button" id="resetButton" class="btn btn-danger" data-role="<?php echo $userRole; ?>">Reset Transactions</button>
+                </form>
+                <div class="pagination-container"></div>
             </div>
         </div>
     </div>
@@ -465,7 +513,6 @@ margin-right: 10px;
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <script>
 // Firebase configuration
@@ -510,71 +557,13 @@ return { date, time };
 }
 
 var mostRecentTransactionKey = null;
-var currentPage = 1;
-var transactionsPerPage = 10;
-var allTransactions = [];
+let allTransactions = [];
+const transactionsPerPage = 10;
+let currentPage = 1;
 
-function addTransactionToTable(transaction, prepend = false, isRecent = false) {
-var tableBody = $('#transactionTable tbody');
-var highlightClass = isRecent ? 'class="recent-transaction"' : '';
-var newRow = `
-<tr ${highlightClass} data-key="${transaction.key}">
-<td>${transaction.product_name}</td>
-<td>₱${parseFloat(transaction.amount).toFixed(2)}</td>
-<td>${formatTime(transaction.time)}</td>
-<td>${formatDate(transaction.date)}</td>
-<td>${transaction.remaining}</td>
-</tr>
-`;
-if (prepend) {
-tableBody.prepend(newRow);
-} else {
-tableBody.append(newRow);
-}
-
-if (isRecent) {
-setTimeout(() => {
-$(`tr[data-key="${transaction.key}"]`).removeClass('recent-transaction');
-}, 3000);
-}
-}
-
-function loadTransactions(page) {
-var start = (page - 1) * transactionsPerPage;
-var end = start + transactionsPerPage;
-var transactionsToShow = allTransactions.slice(start, end);
-
-$('#transactionTable tbody').empty();
-transactionsToShow.forEach((transaction, index) => {
-addTransactionToTable(transaction, false, index === 0 && page === 1);
-});
-
-updatePagination();
-console.log('Loaded transactions for page', page, 'Total transactions:', allTransactions.length);
-}
-
-function updatePagination() {
-var totalPages = Math.ceil(allTransactions.length / transactionsPerPage);
-var paginationHtml = '';
-
-paginationHtml += `<span>Page ${currentPage} of ${totalPages}</span>`;
-
-if (currentPage > 1) {
-paginationHtml += `<button onclick="changePage(${currentPage - 1})">Previous</button>`;
-}
-
-if (currentPage < totalPages) {
-paginationHtml += `<button onclick="changePage(${currentPage + 1})">Next</button>`;
-}
-
-$('#pagination').html(paginationHtml);
-console.log('Pagination updated. Total pages:', totalPages, 'Current page:', currentPage);
-}
-
-function changePage(newPage) {
-currentPage = newPage;
-loadTransactions(currentPage);
-}
+let startDate = null;
+let endDate = null;
+let earliestTransactionDate = null;
 
 function loadExistingTransactions() {
     transactionsRef.once('value')
@@ -590,10 +579,30 @@ function loadExistingTransactions() {
                 return dateB - dateA;
             });
 
+            // Find the earliest transaction date
+            earliestTransactionDate = allTransactions[allTransactions.length - 1].date;
+
+            // Set the min attribute for date inputs
+            $('#startDate, #endDate').attr('min', earliestTransactionDate);
+
+            // Set the max attribute to today's date
+            const today = new Date().toISOString().split('T')[0];
+            $('#startDate, #endDate').attr('max', today);
+
+            // Apply date filter if set
+            if (startDate && endDate) {
+                allTransactions = allTransactions.filter(transaction => {
+                    const transactionDate = new Date(transaction.date);
+                    return transactionDate >= startDate && transactionDate <= endDate;
+                });
+            }
+
             mostRecentTransactionKey = allTransactions[0]?.key || null;
-            loadTransactions(1);
+            updateTransactionTable();
         } else {
             console.log('No existing transactions found');
+            allTransactions = [];
+            updateUIForEmptyTransactions();
         }
     })
     .catch(function(error) {
@@ -601,21 +610,90 @@ function loadExistingTransactions() {
     });
 }
 
+function updateTransactionTable() {
+    var tableBody = $('#transactionTable tbody');
+    tableBody.empty();
+
+    if (allTransactions && allTransactions.length > 0) {
+        const startIndex = (currentPage - 1) * transactionsPerPage;
+        const endIndex = startIndex + transactionsPerPage;
+        const transactionsToShow = allTransactions.slice(startIndex, endIndex);
+
+        transactionsToShow.forEach(function(transaction) {
+            var row = `
+                <tr data-key="${transaction.key}">
+                    <td>${transaction.product_name}</td>
+                    <td>₱${parseFloat(transaction.amount).toFixed(2)}</td>
+                    <td>${formatTime(transaction.time)}</td>
+                    <td>${formatDate(transaction.date)}</td>
+                    <td>${transaction.remaining}</td>
+                </tr>
+            `;
+            tableBody.append(row);
+        });
+
+        updatePagination();
+    } else {
+        tableBody.append('<tr><td colspan="5" class="text-center">No transactions available</td></tr>');
+        $('.pagination-container').hide();
+    }
+
+    updateUIForEmptyTransactions();
+}
+
+function updatePagination() {
+    const totalPages = Math.ceil(allTransactions.length / transactionsPerPage);
+    const paginationContainer = $('.pagination-container');
+    
+    if (allTransactions.length <= transactionsPerPage) {
+        paginationContainer.hide();
+        return;
+    }
+
+    paginationContainer.show();
+    paginationContainer.empty();
+
+    const pagination = $('<div class="pagination"></div>');
+    
+    // Previous button
+    const prevButton = $(`<button ${currentPage === 1 ? 'disabled' : ''}>
+        <i class="fas fa-arrow-left"></i>
+    </button>`);
+    prevButton.on('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            updateTransactionTable();
+        }
+    });
+    pagination.append(prevButton);
+
+    // Page indicator
+    pagination.append(`<span>Page ${currentPage} of ${totalPages}</span>`);
+
+    // Next button
+    const nextButton = $(`<button ${currentPage === totalPages ? 'disabled' : ''}>
+        <i class="fas fa-arrow-right"></i>
+    </button>`);
+    nextButton.on('click', () => {
+        if (currentPage < totalPages) {
+            currentPage++;
+            updateTransactionTable();
+        }
+    });
+    pagination.append(nextButton);
+
+    paginationContainer.append(pagination);
+}
+
 function listenForNewTransactions() {
     transactionsRef.on('child_added', function(snapshot) {
         var newTransaction = snapshot.val();
         newTransaction.key = snapshot.key;
         
-        // Check if this transaction is already in our list
-        if (!allTransactions.some(t => t.key === newTransaction.key)) {
+        if (newTransaction.key !== mostRecentTransactionKey) {
             allTransactions.unshift(newTransaction);
-            if (currentPage === 1) {
-                addTransactionToTable(newTransaction, true, true);
-                if ($('#transactionTable tbody tr').length > transactionsPerPage) {
-                    $('#transactionTable tbody tr:last').remove();
-                }
-            }
-            updatePagination();
+            mostRecentTransactionKey = newTransaction.key;
+            updateTransactionTable();
         }
     });
 }
@@ -628,11 +706,7 @@ function listenForTransactionChanges() {
         var index = allTransactions.findIndex(t => t.key === updatedTransaction.key);
         if (index !== -1) {
             allTransactions[index] = updatedTransaction;
-            if (Math.floor(index / transactionsPerPage) + 1 === currentPage) {
-                $(`tr[data-key="${updatedTransaction.key}"]`).replaceWith(
-                    $(addTransactionToTable(updatedTransaction, false, true))
-                );
-            }
+            updateTransactionTable();
         }
     });
 }
@@ -641,59 +715,47 @@ function listenForTransactionDeletions() {
     transactionsRef.on('child_removed', function(snapshot) {
         var deletedKey = snapshot.key;
         allTransactions = allTransactions.filter(t => t.key !== deletedKey);
-        $(`tr[data-key="${deletedKey}"]`).remove();
-        loadTransactions(currentPage);
-        updatePagination();
+        updateTransactionTable();
     });
 }
 
-// Reset button functionality
-$('#resetButton').click(function() {
-    var userRole = $(this).data('role');
-    
-    if (userRole !== 'admin') {
-        return; // Button should be disabled for non-admins, but just in case
-    }
-    
-    if (confirm('Are you sure you want to delete all transactions? This action cannot be undone.')) {
-        var transactionsRef = firebase.database().ref('tables/transactions');
-        transactionsRef.remove()
-            .then(function() {
-                console.log('All transactions have been reset');
-                $('#transactionTable tbody').empty();
-                allTransactions = [];
-                updatePagination();
-                alert('All transactions have been successfully deleted.');
-            })
-            .catch(function(error) {
-                console.error('Error resetting transactions:', error);
-                alert('An error occurred while deleting transactions. Please try again.');
-            });
-    }
-});
-
 $(document).ready(function() {
-    console.log('jQuery is ready');
-    console.log('Table exists:', $('#transactionTable').length > 0);
-    console.log('Pagination div exists:', $('#pagination').length > 0);
     loadExistingTransactions();
     listenForNewTransactions();
     listenForTransactionChanges();
     listenForTransactionDeletions();
 });
 
-// Add this to the existing <script> tag, after line 657
-document.addEventListener('DOMContentLoaded', function() {
-    const sidebar = document.getElementById('sidebar');
-    const userRole = sidebar.dataset.userRole;
-    const userManagementLink = document.getElementById('userManagementLink');
-
-    userManagementLink.addEventListener('click', function(event) {
-        if (userRole !== 'admin') {
-            event.preventDefault();
-            alert("You don't have permission to access User Management.");
-        }
-    });
+// Reset button functionality
+$('#resetButton').click(function() {
+    var userRole = $(this).data('role');
+    
+    if (userRole !== 'admin') {
+        alert("You don't have permission to reset transactions.");
+        return;
+    }
+    
+    if (confirm('Are you sure you want to delete all transactions? This action cannot be undone.')) {
+        $.ajax({
+            url: 'trans.php',
+            type: 'POST',
+            data: { reset_transactions: 1 },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    alert(response.message);
+                    allTransactions = [];
+                    loadTransactions(1);
+                    updateUIForEmptyTransactions();
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            },
+            error: function() {
+                alert('An error occurred while resetting transactions.');
+            }
+        });
+    }
 });
 
 // Function to calculate summary data
@@ -705,54 +767,123 @@ function calculateSummary(transactions) {
         productCounts[t.product_name] = (productCounts[t.product_name] || 0) + 1;
     });
 
-    let mostSold = Object.entries(productCounts).reduce((a, b) => a[1] > b[1] ? a : b)[0];
-    let leastSold = Object.entries(productCounts).reduce((a, b) => a[1] < b[1] ? a : b)[0];
+    // Sort products by total sold (descending order)
+    let sortedProducts = Object.entries(productCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => `${name}: ${count}`);
 
     return {
         totalTransactions: transactions.length,
         totalIncome: totalIncome.toFixed(2),
-        mostSoldProduct: mostSold,
-        leastSoldProduct: leastSold
+        productsSold: sortedProducts
     };
 }
 
-// Function to export data as CSV
-function exportCSV() {
-    let summary = calculateSummary(allTransactions);
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "HygienexCare - Transaction Log Report\n\n";
-    csvContent += `Report Generated: ${new Date().toLocaleString()}\n\n`;
-    csvContent += `Total Transactions: ${summary.totalTransactions}\n`;
-    csvContent += `Total Income: ₱${summary.totalIncome}\n`;
-    csvContent += `Most Sold Product: ${summary.mostSoldProduct}\n`;
-    csvContent += `Least Sold Product: ${summary.leastSoldProduct}\n\n`;
-    csvContent += "Transaction ID,Name,Amount,Time,Date,Remaining\n";
-    allTransactions.forEach(function(transaction, index) {
-        let row = `${index + 1},${transaction.product_name},₱${parseFloat(transaction.amount).toFixed(2)},${formatTime(transaction.time)},${formatDate(transaction.date)},${transaction.remaining}`;
-        csvContent += row + "\n";
+// Replace the existing exportPDF function with this new version
+function showExportDialog() {
+    const dialog = $(`
+        <div class="modal fade" id="exportModal" tabindex="-1" role="dialog" aria-labelledby="exportModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="exportModalLabel">Export PDF</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="radio" name="exportOption" id="exportAll" value="all" checked>
+                            <label class="form-check-label" for="exportAll">
+                                Export all transactions
+                            </label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="radio" name="exportOption" id="exportFiltered" value="filtered">
+                            <label class="form-check-label" for="exportFiltered">
+                                Export filtered transactions
+                            </label>
+                        </div>
+                        <div id="dateFilterFields" style="display: none;">
+                            <div class="form-group">
+                                <label for="exportStartDate">Start Date:</label>
+                                <input type="date" class="form-control" id="exportStartDate">
+                            </div>
+                            <div class="form-group">
+                                <label for="exportEndDate">End Date:</label>
+                                <input type="date" class="form-control" id="exportEndDate">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="confirmExport">Export</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    $('body').append(dialog);
+    $('#exportModal').modal('show');
+
+    // Set min and max dates for the export date inputs
+    $('#exportStartDate, #exportEndDate').attr('min', earliestTransactionDate);
+    $('#exportStartDate, #exportEndDate').attr('max', new Date().toISOString().split('T')[0]);
+
+    // Show/hide date filter fields based on radio button selection
+    $('input[name="exportOption"]').change(function() {
+        if ($(this).val() === 'filtered') {
+            $('#dateFilterFields').show();
+        } else {
+            $('#dateFilterFields').hide();
+        }
     });
-    var encodedUri = encodeURI(csvContent);
-    var link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "HygienexCare_Transaction_Log.csv");
-    document.body.appendChild(link);
-    link.click();
+
+    // Handle export confirmation
+    $('#confirmExport').click(function() {
+        const exportOption = $('input[name="exportOption"]:checked').val();
+        let transactionsToExport = allTransactions;
+
+        if (exportOption === 'filtered') {
+            const exportStartDate = new Date($('#exportStartDate').val());
+            const exportEndDate = new Date($('#exportEndDate').val());
+            exportEndDate.setHours(23, 59, 59, 999);
+
+            transactionsToExport = allTransactions.filter(transaction => {
+                const transactionDate = new Date(transaction.date);
+                return transactionDate >= exportStartDate && transactionDate <= exportEndDate;
+            });
+        }
+
+        exportPDF(transactionsToExport);
+        $('#exportModal').modal('hide');
+    });
+
+    // Clean up the modal when it's hidden
+    $('#exportModal').on('hidden.bs.modal', function () {
+        $(this).remove();
+    });
 }
 
-// Function to export data as PDF
-function exportPDF() {
+// Modify the exportPDF function to accept transactions as a parameter
+function exportPDF(transactions) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const summary = calculateSummary(allTransactions);
+    const summary = calculateSummary(transactions);
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
 
+    // Colors
+    const primaryColor = [54, 156, 67];  // #369c43
+    const secondaryColor = [240, 240, 240];  // #f0f0f0
+
     // Add background color
-    doc.setFillColor(240, 240, 240);
+    doc.setFillColor(...secondaryColor);
     doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
     // Header
-    doc.setFillColor(57, 156, 67);  // Green color
+    doc.setFillColor(...primaryColor);
     doc.rect(0, 0, pageWidth, 40, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
@@ -765,26 +896,30 @@ function exportPDF() {
     // Summary section
     doc.setTextColor(0, 0, 0);
     doc.setFillColor(220, 220, 220);
-    doc.roundedRect(20, 50, pageWidth - 40, 50, 3, 3, 'F');
-    doc.setFontSize(14);
+    doc.roundedRect(20, 50, pageWidth - 40, 80, 3, 3, 'F');
+    doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.text("Summary", 25, 60);
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`Total Transactions: ${summary.totalTransactions}`, 25, 70);
-    doc.text(`Total Income: ₱${summary.totalIncome}`, 25, 80);
-    doc.text(`Most Sold Product: ${summary.mostSoldProduct}`, pageWidth / 2 + 10, 70);
-    doc.text(`Least Sold Product: ${summary.leastSoldProduct}`, pageWidth / 2 + 10, 80);
+    doc.text(`Total Transactions: ${summary.totalTransactions}`, 25, 75);
+    doc.text(`Total Income: ₱${summary.totalIncome}`, 25, 85);
+    
+    // Products Sold
+    doc.text("Products Sold:", 25, 95);
+    summary.productsSold.forEach((product, index) => {
+        doc.text(product, 35, 105 + (index * 10));
+    });
 
     // Date and Time
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 110);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 140);
 
     // Table
     doc.autoTable({
         head: [['ID', 'Name', 'Amount', 'Time', 'Date', 'Remaining']],
-        body: allTransactions.map((t, index) => [
+        body: transactions.map((t, index) => [
             index + 1,
             t.product_name, 
             `₱${parseFloat(t.amount).toFixed(2)}`, 
@@ -792,70 +927,160 @@ function exportPDF() {
             formatDate(t.date), 
             t.remaining
         ]),
-        startY: 120,
+        startY: 150,
         styles: { fillColor: [255, 255, 255] },
         columnStyles: {
             0: { cellWidth: 20 },
-            1: { cellWidth: 50 },
+            1: { cellWidth: 'auto' },
             2: { cellWidth: 30 },
             3: { cellWidth: 30 },
             4: { cellWidth: 30 },
             5: { cellWidth: 30 }
         },
-        headStyles: { fillColor: [57, 156, 67], textColor: [255, 255, 255] },
+        headStyles: { fillColor: primaryColor, textColor: [255, 255, 255] },
         alternateRowStyles: { fillColor: [245, 245, 245] }
     });
 
-    // Footer
+    // Footer and Watermark
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
+        
+        // Footer
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
         doc.text(`Page ${i} of ${pageCount}`, pageWidth - 20, pageHeight - 10, { align: "right" });
         
-        // Add logo or watermark
-        doc.setGState(new doc.GState({opacity: 0.2}));
-        doc.setFontSize(60);
-        doc.setTextColor(150, 150, 150);
-        doc.text("HygienexCare", pageWidth / 2, pageHeight / 2, { align: "center", angle: 45 });
+        // Watermark
+        doc.setGState(new doc.GState({opacity: 0.1}));
+        doc.setFontSize(80);
+        doc.setTextColor(...primaryColor);
+
+        // Calculate text dimensions
+        const watermarkText = "HygienexCare";
+        const textWidth = doc.getStringUnitWidth(watermarkText) * doc.internal.getFontSize() / doc.internal.scaleFactor;
+        const textHeight = doc.internal.getFontSize() / doc.internal.scaleFactor;
+
+        // Calculate center position
+        const centerX = pageWidth / 2;
+        const centerY = pageHeight / 2;
+
+        // Calculate the position for rotated text
+        const angle = 45 * Math.PI / 180; // 45 degrees in radians
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        // Adjust these values to fine-tune the position
+        const offsetX = 90; // Positive moves right, negative moves left
+        const offsetY = 0; // Positive moves down, negative moves up
+
+        const x = centerX - (textWidth / 2 * cos) + offsetX;
+        const y = centerY + (textWidth / 2 * sin) + offsetY;
+
+        // Draw the rotated text
+        doc.text(watermarkText, x, y, {
+            angle: 45,
+            align: 'center',
+            baseline: 'middle'
+        });
+
         doc.setGState(new doc.GState({opacity: 1}));
     }
 
     doc.save("HygienexCare_Transaction_Log.pdf");
 }
 
-// Function to export data as Excel
-function exportExcel() {
-    const summary = calculateSummary(allTransactions);
-    const worksheet = XLSX.utils.json_to_sheet([
-        { A: "HygienexCare - Transaction Log Report" },
-        { A: `Report Generated: ${new Date().toLocaleString()}` },
-        { A: `Total Transactions: ${summary.totalTransactions}` },
-        { A: `Total Income: ₱${summary.totalIncome}` },
-        { A: `Most Sold Product: ${summary.mostSoldProduct}` },
-        { A: `Least Sold Product: ${summary.leastSoldProduct}` },
-        {}  // Empty row
-    ], { header: ["A"], skipHeader: true });
+// Update the event listener for the export button
+document.getElementById('exportPDF').addEventListener('click', showExportDialog);
 
-    XLSX.utils.sheet_add_json(worksheet, allTransactions.map((t, index) => ({
-        ID: index + 1,
-        Name: t.product_name,
-        Amount: `₱${parseFloat(t.amount).toFixed(2)}`,
-        Time: formatTime(t.time),
-        Date: formatDate(t.date),
-        Remaining: t.remaining
-    })), { origin: "A8" });
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
-    XLSX.writeFile(workbook, "HygienexCare_Transaction_Log.xlsx");
+function updateUIForEmptyTransactions() {
+    transactionsRef.once('value')
+    .then(function(snapshot) {
+        if (snapshot.exists()) {
+            $('#resetButton').prop('disabled', false);
+            $('#exportPDF').prop('disabled', false);
+            if ($('#transactionTable tbody tr').length === 0) {
+                loadExistingTransactions(); // Reload transactions if table is empty but Firebase has data
+            }
+        } else {
+            $('#transactionTable tbody').html('<tr><td colspan="5" class="text-center">No transactions available</td></tr>');
+            $('#resetButton').prop('disabled', true);
+            $('#exportPDF').prop('disabled', true);
+        }
+    })
+    .catch(function(error) {
+        console.error('Error checking transactions:', error);
+    });
 }
 
-// Add event listeners for export buttons
-document.getElementById('exportCSV').addEventListener('click', exportCSV);
-document.getElementById('exportPDF').addEventListener('click', exportPDF);
-document.getElementById('exportExcel').addEventListener('click', exportExcel);
+function listenForChanges() {
+    transactionsRef.on('value', function(snapshot) {
+        console.log('Changes detected in transactions');
+        loadExistingTransactions();
+    });
+}
+
+// Call this function when the page loads
+$(document).ready(function() {
+    loadExistingTransactions();
+    listenForChanges();
+});
+
+// Add this to the existing <script> tag, after line 657
+document.addEventListener('DOMContentLoaded', function() {
+    const sidebar = document.getElementById('sidebar');
+    const userRole = sidebar.dataset.userRole;
+    const userManagementLink = document.getElementById('userManagementLink');
+    const activityLogLink = document.getElementById('activityLogLink'); // Add this line
+
+    function restrictAccess(event, linkName) {
+        if (userRole !== 'admin') {
+            event.preventDefault();
+            alert(`You don't have permission to access ${linkName}.`);
+        }
+    }
+
+    userManagementLink.addEventListener('click', function(event) {
+        restrictAccess(event, 'User Management');
+    });
+
+    // Add this new event listener for Activity Log
+    activityLogLink.addEventListener('click', function(event) {
+        restrictAccess(event, 'Activity Log');
+    });
+});
+
+// Add event listeners for date filter form
+$(document).ready(function() {
+    $('#dateFilterForm').on('submit', function(e) {
+        e.preventDefault();
+        startDate = new Date($('#startDate').val());
+        endDate = new Date($('#endDate').val());
+        endDate.setHours(23, 59, 59, 999); // Set to end of day
+        loadExistingTransactions();
+    });
+
+    $('#resetFilter').on('click', function() {
+        $('#startDate').val('');
+        $('#endDate').val('');
+        startDate = null;
+        endDate = null;
+        loadExistingTransactions();
+    });
+
+    // Add event listener for start date change
+    $('#startDate').on('change', function() {
+        $('#endDate').attr('min', $(this).val());
+    });
+
+    // Add event listener for end date change
+    $('#endDate').on('change', function() {
+        $('#startDate').attr('max', $(this).val());
+    });
+
+    loadExistingTransactions();
+    listenForChanges();
+});
 </script>
 
 <?php include 'edit_profile_modal.php'; ?>

@@ -8,7 +8,6 @@ ini_set('error_log', __DIR__ . '/php_errors.log');
 
 require __DIR__.'/vendor/autoload.php';
 require_once __DIR__ . '/firebase-init.php';
-require_once __DIR__ . '/functions.php';
 
 // Prevent caching
 header("Cache-Control: no-cache, no-store, must-revalidate");
@@ -77,8 +76,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['createAccount'])) {
                 'user_id' => $username,
                 'user_pass' => password_hash($password, PASSWORD_DEFAULT)
             ];
-            // After successfully creating a new user (around line 81)
-            addLogEntry($_SESSION['user_id'], 'Added New Account', "Added **{$username}** as **{$role}**");
 
             $usersRef->push($newUser);
             echo "<script>
@@ -124,18 +121,10 @@ if (isset($_POST['deleteAccount'])) {
         
         error_log("Number of admins: " . $adminCount);
 
-        // Inside the deleteAccount POST handler (around line 127)
-addLogEntry($_SESSION['user_id'], 'Removed an Account', "Removed **{$userToDelete['user_id']}** as **{$userToDelete['u_role']}**");
-
         // Check if this is not the last admin
         if ($userToDelete['u_role'] !== 'admin' || $adminCount > 1) {
             $usersRef->getChild($key)->remove();
             
-            // Inside the deleteAccount POST handler, before redirecting (around line 133)
-            if ($userToDelete['user_id'] === $_SESSION['user_id']) {
-                addLogEntry($_SESSION['user_id'], 'Account Self-Removal', "**{$_SESSION['user_id']}** removed themselves as **{$userToDelete['u_role']}**");
-            }
-
             // Check if the user was actually deleted
             $updatedUsers = $usersRef->getValue();
             if (!isset($updatedUsers[$key])) {
@@ -167,11 +156,6 @@ if (isset($_POST['updateRole'])) {
         }
     }
     
-    // Inside the updateRole POST handler (around line 165)
-    $oldRole = $usersRef->getChild($key)->getChild('u_role')->getValue();
-    $usersRef->getChild($key)->update(['u_role' => $newRole]);
-    addLogEntry($_SESSION['user_id'], 'Changed Account Role', "Changed **{$users[$key]['user_id']}'s** role into **{$newRole}**");
-
     // Check if this change would remove the last admin
     if ($newRole !== 'admin' && $adminCount <= 1) {
         echo json_encode(['success' => false, 'message' => 'Cannot change the role of the last admin.']);
@@ -567,12 +551,12 @@ if (isset($_POST['updateRole'])) {
         </div>
     </header>
     <div class="main-container">
-        <nav class="sidebar" id="sidebar" data-user-role="<?php echo $userRole; ?>">
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
             <a href="dash.php" class="menu-item"><i class="fas fa-box"></i> System Status</a>
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
-            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
-            <a href="act.php" class="menu-item"><i class="fas fa-history"></i> Activity Log</a>
-            <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
+            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction Log</a>
+            <a href="user.php" class="menu-item"><i class="fas fa-cog"></i> User Management</a>
         </nav>
         <!-- Main Content -->
         <div class="content">
@@ -581,100 +565,7 @@ if (isset($_POST['updateRole'])) {
                     <h2>User Management</h2>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <!-- Account Creation Card -->
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3>Create New Account</h3>
-                                </div>
-                                <div class="card-body">
-                                    <!-- Display errors if any -->
-                                    <?php if (!empty($errors)): ?>
-                                        <div class="alert alert-danger">
-                                            <?php foreach ($errors as $error): ?>
-                                                <p><?php echo htmlspecialchars($error); ?></p>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-
-                                    <!-- Account creation form -->
-                                    <form method="POST" action="">
-                                        <div class="form-group">
-                                            <label for="role">Role:</label>
-                                            <select class="form-control" id="role" name="role">
-                                                <option value="admin">Admin</option>
-                                                <option value="viewer">Viewer</option>
-                                            </select>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="username">Username:</label>
-                                            <input type="text" class="form-control" id="username" name="username" required>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="password">Password:</label>
-                                            <input type="password" class="form-control" id="password" name="password" required>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="confirmPassword">Confirm Password:</label>
-                                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary" name="createAccount">Create Account</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- User List Card -->
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3>User List</h3>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered table-striped text-center">
-                                            <thead>
-                                                <tr>
-                                                    <th>Username</th>
-                                                    <th>Role</th>
-                                                    <th>Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php
-                                                // Calculate admin count
-                                                $adminCount = 0;
-                                                foreach ($users as $user) {
-                                                    if ($user['u_role'] === 'admin') {
-                                                        $adminCount++;
-                                                    }
-                                                }
-
-                                                foreach ($users as $key => $user) {
-                                                    $isLastAdmin = ($user['u_role'] === 'admin' && $adminCount === 1);
-
-                                                    echo "<tr>";
-                                                    echo "<td>" . htmlspecialchars($user['user_id']) . "</td>";
-                                                    echo "<td>";
-                                                    echo "<select class='form-control role-select' data-key='" . $key . "' " . ($isLastAdmin ? 'disabled' : '') . ">";
-                                                    echo "<option value='admin' " . ($user['u_role'] === 'admin' ? 'selected' : '') . ">Admin</option>";
-                                                    echo "<option value='viewer' " . ($user['u_role'] === 'viewer' ? 'selected' : '') . ">Viewer</option>";
-                                                    echo "</select>";
-                                                    echo "</td>";
-                                                    echo "<td>";
-                                                    echo "<button class='btn btn-sm btn-danger delete-account' data-key='" . $key . "' " . ($isLastAdmin ? 'disabled' : '') . " " . ($isLastAdmin ? "data-custom-tooltip='Cannot delete this account'" : "") . ">";
-                                                    echo "Delete</button>";
-                                                    echo "</td>";
-                                                    echo "</tr>";
-                                                }
-                                                ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    
                 </div>
             </div>
         </div>
@@ -682,89 +573,7 @@ if (isset($_POST['updateRole'])) {
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            // Edit role
-            $('.role-select').change(function() {
-                var key = $(this).data('key');
-                var newRole = $(this).val();
-                
-                if ($(this).is(':disabled')) {
-                    alert('Cannot change the role of the last admin.');
-                    return;
-                }
-                
-                if (confirm('Are you sure you want to change the role to ' + newRole + '?')) {
-                    $.ajax({
-                        url: 'user.php',
-                        type: 'POST',
-                        data: { updateRole: true, key: key, newRole: newRole },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.success) {
-                                alert(response.message);
-                                location.reload();
-                            } else {
-                                alert(response.message);
-                            }
-                        },
-                        error: function() {
-                            alert('An error occurred while updating the role.');
-                        }
-                    });
-                } else {
-                    // If the user cancels, revert the dropdown to its original value
-                    $(this).val($(this).find('option:not(:selected)').val());
-                }
-            });
-
-            // Delete account
-            $('.delete-account').click(function() {
-                var key = $(this).data('key');
-                var username = $(this).closest('tr').find('td:first').text();
-                var currentUser = '<?php echo htmlspecialchars($_SESSION['user_id']); ?>';
-                console.log("Attempting to delete user with key:", key);
-                
-                if ($(this).is(':disabled')) {
-                    alert('Cannot delete this account.');
-                    return;
-                }
-                
-                var confirmMessage = username === currentUser ?
-                    'Are you sure you want to remove yourself as Administrator?' :
-                    'Are you sure you want to remove ' + username + '\'s account?';
-                
-                if (confirm(confirmMessage)) {
-                    $.ajax({
-                        url: 'user.php',
-                        type: 'POST',
-                        data: { deleteAccount: true, key: key },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.success) {
-                                if (username === currentUser) {
-                                    alert('Your account has been deleted.');
-                                    window.location.href = 'logout.php';
-                                } else {
-                                    alert(response.message);
-                                    setTimeout(function() {
-                                        location.reload(true);
-                                    }, 100);
-                                }
-                            } else {
-                                alert('Error: ' + response.message);
-                            }
-                        },
-                        error: function(jqXHR, textStatus, errorThrown) {
-                            console.error('AJAX Error:', textStatus, errorThrown);
-                            console.log('Response Text:', jqXHR.responseText);
-                            alert('An error occurred while deleting the account. Please check the server logs for more details.');
-                        }
-                    });
-                }
-            });
-        });
-    </script>
+   
     <?php include 'edit_profile_modal.php'; ?>
     <script src="edit_profile.js"></script>
     <!-- Firebase SDK -->

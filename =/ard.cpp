@@ -21,6 +21,9 @@ String product_name[product_count] = {"Update Prod1", "Update Prod2"};
 int product_price[product_count] = {0, 0};
 int product_quantity[product_count] = {0, 0};
 
+// Add this near line 22, with other product arrays
+String product_identity[product_count] = {"", ""};
+
 LiquidCrystal_I2C lcd(0x27, 16, 2); // Initialize the LCD with I2C address
 
 // Variables for coin detection
@@ -43,6 +46,7 @@ bool updateRequested = false;
 
 // Define the Product struct
 struct Product {
+  String identity;
   String name;
   int price;
   int quantity;
@@ -60,7 +64,7 @@ Stepper wipesStepper(2048, 22, 26, 24, 28); // 2048 steps per revolution
 
 // Add this function to send updates to ESP32
 void sendStockUpdateToESP32(int productIndex, int newStock) {
-  Serial.println("STOCK_UPDATE," + String(productIndex) + "," + String(newStock));
+  Serial.println("STOCK_UPDATE," + product_identity[productIndex] + "," + String(productIndex) + "," + String(newStock));
 }
 
 const int EEPROM_PARTITION1_START = 0;
@@ -171,10 +175,10 @@ void loop() {
       lcd.clear();
       lcd.print("Updating...");
     } else if (updateInProgress && data.startsWith("U,")) {
-      updateBuffer = data;
+      processUpdate(data);  // Process the update immediately
     } else if (data == "END_UPDATE") {
       updateInProgress = false;
-      processUpdate(updateBuffer);
+      updateDisplay();  // Ensure the display is updated after the process is complete
     } else if (data == "REQUEST_STOCK") {
       sendCurrentStockToESP32();
     }
@@ -206,11 +210,17 @@ void processUpdate(String data) {
     int firstComma = data.indexOf(',');
     int secondComma = data.indexOf(',', firstComma + 1);
     int thirdComma = data.indexOf(',', secondComma + 1);
+    int fourthComma = data.indexOf(',', thirdComma + 1);
     
-    String name = data.substring(0, firstComma);
-    String priceStr = data.substring(firstComma + 1, secondComma);
-    String quantityStr = data.substring(secondComma + 1, thirdComma);
+    String identity = data.substring(0, firstComma);
+    String name = data.substring(firstComma + 1, secondComma);
+    String priceStr = data.substring(secondComma + 1, thirdComma);
+    String quantityStr = data.substring(thirdComma + 1, fourthComma);
     
+    if (identity != "NC" && identity.length() > 0) {
+      anyUpdates = true;
+      product_identity[i] = identity;
+    }
     if (name != "NC" && name.length() > 0) {
       anyUpdates = true;
       product_name[i] = name;
@@ -224,12 +234,8 @@ void processUpdate(String data) {
       product_quantity[i] = quantityStr.toInt();
     }
     
-    if (anyUpdates) {
-      Serial.println("Updated product " + String(i) + ": " + product_name[i] + ", " + String(product_price[i]) + ", " + String(product_quantity[i]));
-    }
-    
-    if (thirdComma != -1) {
-      data = data.substring(thirdComma + 1);
+    if (fourthComma != -1) {
+      data = data.substring(fourthComma + 1);
     } else {
       break;  // No more data to process
     }
@@ -243,10 +249,10 @@ void processUpdate(String data) {
     lcd.setCursor(0, 1);
     lcd.print("updated!");
     delay(2000);  // Show the message for 2 seconds
-    updateDisplay();  // Update the display with the new information
-  } else {
-    updateDisplay();  // Just refresh the display
   }
+
+  updateDisplay();  // Always update the display, whether there were changes or not
+  updateInProgress = false;  // Reset the update flag
 }
 
 // Function to handle coin insertion logic
@@ -518,11 +524,13 @@ bool updateProductData() {
     bool changed = false;
     for (int i = 0; i < product_count && i < products.size(); i++) {
       JsonObject product = products[i];
+      String newIdentity = product["identity"].as<String>();
       String newName = product["name"].as<String>();
       int newPrice = product["price"];
       int newQuantity = product["stocks"];
 
-      if (product_name[i] != newName || product_price[i] != newPrice || product_quantity[i] != newQuantity) {
+      if (product_identity[i] != newIdentity || product_name[i] != newName || product_price[i] != newPrice || product_quantity[i] != newQuantity) {
+        product_identity[i] = newIdentity;
         product_name[i] = newName;
         product_price[i] = newPrice;
         product_quantity[i] = newQuantity;
@@ -553,12 +561,19 @@ bool updateProductData() {
 void saveToPartition1() {
   int addr = EEPROM_PARTITION1_START;
   for (int i = 0; i < product_count; i++) {
-    // Save string length first
+    // Save identity length and characters
+    uint8_t identityLength = product_identity[i].length();
+    EEPROM.put(addr, identityLength);
+    addr += sizeof(uint8_t);
+    for (uint8_t j = 0; j < identityLength; j++) {
+      EEPROM.put(addr, product_identity[i][j]);
+      addr++;
+    }
+    
+    // Save name length and characters
     uint8_t nameLength = product_name[i].length();
     EEPROM.put(addr, nameLength);
     addr += sizeof(uint8_t);
-    
-    // Save string characters
     for (uint8_t j = 0; j < nameLength; j++) {
       EEPROM.put(addr, product_name[i][j]);
       addr++;
@@ -574,12 +589,22 @@ void saveToPartition1() {
 void loadFromPartition1() {
   int addr = EEPROM_PARTITION1_START;
   for (int i = 0; i < product_count; i++) {
-    // Load string length first
+    // Load identity
+    uint8_t identityLength;
+    EEPROM.get(addr, identityLength);
+    addr += sizeof(uint8_t);
+    product_identity[i] = "";
+    for (uint8_t j = 0; j < identityLength; j++) {
+      char c;
+      EEPROM.get(addr, c);
+      product_identity[i] += c;
+      addr++;
+    }
+    
+    // Load name
     uint8_t nameLength;
     EEPROM.get(addr, nameLength);
     addr += sizeof(uint8_t);
-    
-    // Load string characters
     product_name[i] = "";
     for (uint8_t j = 0; j < nameLength; j++) {
       char c;
@@ -593,21 +618,31 @@ void loadFromPartition1() {
     EEPROM.get(addr, product_quantity[i]);
     addr += sizeof(product_quantity[i]);
     
-    Serial.println("Loaded product " + String(i) + ": " + product_name[i] + ", " + String(product_price[i]) + ", " + String(product_quantity[i]));
+    Serial.println("Loaded product " + String(i) + ": " + product_identity[i] + ", " + product_name[i] + ", " + String(product_price[i]) + ", " + String(product_quantity[i]));
   }
 }
 
 void saveDefaultsToPartition2() {
   int addr = EEPROM_PARTITION2_START;
+  String defaultIdentities[2] = {"Product1", "Product2"};
   String defaultNames[2] = {"Prod1 Empty", "Prod2 Empty"};
   int defaultPrices[2] = {0, 0};
   int defaultQuantities[2] = {0, 0};
   
   for (int i = 0; i < product_count; i++) {
+    // Save identity
+    uint8_t identityLength = defaultIdentities[i].length();
+    EEPROM.put(addr, identityLength);
+    addr += sizeof(uint8_t);
+    for (uint8_t j = 0; j < identityLength; j++) {
+      EEPROM.put(addr, defaultIdentities[i][j]);
+      addr++;
+    }
+    
+    // Save name
     uint8_t nameLength = defaultNames[i].length();
     EEPROM.put(addr, nameLength);
     addr += sizeof(uint8_t);
-    
     for (uint8_t j = 0; j < nameLength; j++) {
       EEPROM.put(addr, defaultNames[i][j]);
       addr++;
@@ -623,10 +658,22 @@ void saveDefaultsToPartition2() {
 void loadFromPartition2() {
   int addr = EEPROM_PARTITION2_START;
   for (int i = 0; i < product_count; i++) {
+    // Load identity
+    uint8_t identityLength;
+    EEPROM.get(addr, identityLength);
+    addr += sizeof(uint8_t);
+    product_identity[i] = "";
+    for (uint8_t j = 0; j < identityLength; j++) {
+      char c;
+      EEPROM.get(addr, c);
+      product_identity[i] += c;
+      addr++;
+    }
+    
+    // Load name
     uint8_t nameLength;
     EEPROM.get(addr, nameLength);
     addr += sizeof(uint8_t);
-    
     product_name[i] = "";
     for (uint8_t j = 0; j < nameLength; j++) {
       char c;
@@ -643,11 +690,13 @@ void loadFromPartition2() {
 }
 
 void resetToDefault() {
+  String defaultIdentities[2] = {"Product1", "Product2"};
   String defaultNames[2] = {"Prod1 Empty", "Prod2 Empty"};
   int defaultPrices[2] = {0, 0};
   int defaultQuantities[2] = {0, 0};
   
   for (int i = 0; i < product_count; i++) {
+    product_identity[i] = defaultIdentities[i];
     product_name[i] = defaultNames[i];
     product_price[i] = defaultPrices[i];
     product_quantity[i] = defaultQuantities[i];
@@ -658,11 +707,12 @@ void resetToDefault() {
   updateGlobalVariables();
 
   // Send reset data to ESP32
-  Serial.println("RESET_DATA,Prod1 Empty,0,0,Prod2 Empty,0,0");
+  Serial.println("RESET_DATA,Product1,Prod1 Empty,0,0,Product2,Prod2 Empty,0,0");
 }
 
 void updateGlobalVariables() {
   for (int i = 0; i < product_count; i++) {
+    products[i].identity = product_identity[i];
     products[i].name = product_name[i];
     products[i].price = product_price[i];
     products[i].quantity = product_quantity[i];
@@ -715,5 +765,6 @@ void checkResetButton() {
 }
 
 void sendCurrentStockToESP32() {
-  Serial.println("CURRENT_STOCK," + String(product_quantity[0]) + "," + String(product_quantity[1]));
+  Serial.println("CURRENT_STOCK," + product_identity[0] + "," + String(product_quantity[0]) + "," + product_identity[1] + "," + String(product_quantity[1]));
 }
+

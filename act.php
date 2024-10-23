@@ -24,6 +24,12 @@ if (!isset($_SESSION['user_id'])) {
 // Use the global $database variable
 global $database;
 
+// Reference to the activity_logs node in Firebase
+$logsRef = $database->getReference('activity_logs');
+
+// Fetch all logs
+$logs = $logsRef->getValue();
+
 // Initialize $usersRef here
 $usersRef = $database->getReference('tables/user');
 
@@ -77,8 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['createAccount'])) {
                 'user_id' => $username,
                 'user_pass' => password_hash($password, PASSWORD_DEFAULT)
             ];
-            // After successfully creating a new user (around line 81)
-            addLogEntry($_SESSION['user_id'], 'Added New Account', "Added **{$username}** as **{$role}**");
 
             $usersRef->push($newUser);
             echo "<script>
@@ -124,18 +128,10 @@ if (isset($_POST['deleteAccount'])) {
         
         error_log("Number of admins: " . $adminCount);
 
-        // Inside the deleteAccount POST handler (around line 127)
-addLogEntry($_SESSION['user_id'], 'Removed an Account', "Removed **{$userToDelete['user_id']}** as **{$userToDelete['u_role']}**");
-
         // Check if this is not the last admin
         if ($userToDelete['u_role'] !== 'admin' || $adminCount > 1) {
             $usersRef->getChild($key)->remove();
             
-            // Inside the deleteAccount POST handler, before redirecting (around line 133)
-            if ($userToDelete['user_id'] === $_SESSION['user_id']) {
-                addLogEntry($_SESSION['user_id'], 'Account Self-Removal', "**{$_SESSION['user_id']}** removed themselves as **{$userToDelete['u_role']}**");
-            }
-
             // Check if the user was actually deleted
             $updatedUsers = $usersRef->getValue();
             if (!isset($updatedUsers[$key])) {
@@ -167,11 +163,6 @@ if (isset($_POST['updateRole'])) {
         }
     }
     
-    // Inside the updateRole POST handler (around line 165)
-    $oldRole = $usersRef->getChild($key)->getChild('u_role')->getValue();
-    $usersRef->getChild($key)->update(['u_role' => $newRole]);
-    addLogEntry($_SESSION['user_id'], 'Changed Account Role', "Changed **{$users[$key]['user_id']}'s** role into **{$newRole}**");
-
     // Check if this change would remove the last admin
     if ($newRole !== 'admin' && $adminCount <= 1) {
         echo json_encode(['success' => false, 'message' => 'Cannot change the role of the last admin.']);
@@ -548,6 +539,40 @@ if (isset($_POST['updateRole'])) {
             border-style: solid;
             border-color: transparent transparent #333 transparent;
         }
+
+        .pagination-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 15px;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+        }
+
+        .pagination button {
+            background-color: #369c43;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin: 0 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .pagination button:hover {
+            background-color: #2a7d35;
+        }
+
+        .pagination button:disabled {
+            background-color: #88c794;
+            cursor: not-allowed;
+        }
+
+        .pagination span {
+            margin: 0 10px;
+        }
     </style>
 </head>
 <body>
@@ -567,6 +592,7 @@ if (isset($_POST['updateRole'])) {
         </div>
     </header>
     <div class="main-container">
+        <!-- Sidebar -->
         <nav class="sidebar" id="sidebar" data-user-role="<?php echo $userRole; ?>">
             <a href="dash.php" class="menu-item"><i class="fas fa-box"></i> System Status</a>
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
@@ -578,102 +604,33 @@ if (isset($_POST['updateRole'])) {
         <div class="content">
             <div class="card">
                 <div class="card-header">
-                    <h2>User Management</h2>
+                    <h2>Activity Log</h2>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <!-- Account Creation Card -->
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3>Create New Account</h3>
-                                </div>
-                                <div class="card-body">
-                                    <!-- Display errors if any -->
-                                    <?php if (!empty($errors)): ?>
-                                        <div class="alert alert-danger">
-                                            <?php foreach ($errors as $error): ?>
-                                                <p><?php echo htmlspecialchars($error); ?></p>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-
-                                    <!-- Account creation form -->
-                                    <form method="POST" action="">
-                                        <div class="form-group">
-                                            <label for="role">Role:</label>
-                                            <select class="form-control" id="role" name="role">
-                                                <option value="admin">Admin</option>
-                                                <option value="viewer">Viewer</option>
-                                            </select>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="username">Username:</label>
-                                            <input type="text" class="form-control" id="username" name="username" required>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="password">Password:</label>
-                                            <input type="password" class="form-control" id="password" name="password" required>
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="confirmPassword">Confirm Password:</label>
-                                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary" name="createAccount">Create Account</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- User List Card -->
-                        <div class="col-md-6">
-                            <div class="card">
-                                <div class="card-header">
-                                    <h3>User List</h3>
-                                </div>
-                                <div class="card-body">
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered table-striped text-center">
-                                            <thead>
-                                                <tr>
-                                                    <th>Username</th>
-                                                    <th>Role</th>
-                                                    <th>Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <?php
-                                                // Calculate admin count
-                                                $adminCount = 0;
-                                                foreach ($users as $user) {
-                                                    if ($user['u_role'] === 'admin') {
-                                                        $adminCount++;
-                                                    }
-                                                }
-
-                                                foreach ($users as $key => $user) {
-                                                    $isLastAdmin = ($user['u_role'] === 'admin' && $adminCount === 1);
-
-                                                    echo "<tr>";
-                                                    echo "<td>" . htmlspecialchars($user['user_id']) . "</td>";
-                                                    echo "<td>";
-                                                    echo "<select class='form-control role-select' data-key='" . $key . "' " . ($isLastAdmin ? 'disabled' : '') . ">";
-                                                    echo "<option value='admin' " . ($user['u_role'] === 'admin' ? 'selected' : '') . ">Admin</option>";
-                                                    echo "<option value='viewer' " . ($user['u_role'] === 'viewer' ? 'selected' : '') . ">Viewer</option>";
-                                                    echo "</select>";
-                                                    echo "</td>";
-                                                    echo "<td>";
-                                                    echo "<button class='btn btn-sm btn-danger delete-account' data-key='" . $key . "' " . ($isLastAdmin ? 'disabled' : '') . " " . ($isLastAdmin ? "data-custom-tooltip='Cannot delete this account'" : "") . ">";
-                                                    echo "Delete</button>";
-                                                    echo "</td>";
-                                                    echo "</tr>";
-                                                }
-                                                ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="form-group">
+                        <label for="filterCategory">Filter by Category:</label>
+                        <select id="filterCategory" class="form-control">
+                            <option value="all">All</option>
+                            <option value="user">User Account</option>
+                            <option value="product">Product Update</option>
+                            <option value="transaction">Transaction Reset</option>
+                        </select>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Table rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -682,89 +639,7 @@ if (isset($_POST['updateRole'])) {
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            // Edit role
-            $('.role-select').change(function() {
-                var key = $(this).data('key');
-                var newRole = $(this).val();
-                
-                if ($(this).is(':disabled')) {
-                    alert('Cannot change the role of the last admin.');
-                    return;
-                }
-                
-                if (confirm('Are you sure you want to change the role to ' + newRole + '?')) {
-                    $.ajax({
-                        url: 'user.php',
-                        type: 'POST',
-                        data: { updateRole: true, key: key, newRole: newRole },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.success) {
-                                alert(response.message);
-                                location.reload();
-                            } else {
-                                alert(response.message);
-                            }
-                        },
-                        error: function() {
-                            alert('An error occurred while updating the role.');
-                        }
-                    });
-                } else {
-                    // If the user cancels, revert the dropdown to its original value
-                    $(this).val($(this).find('option:not(:selected)').val());
-                }
-            });
-
-            // Delete account
-            $('.delete-account').click(function() {
-                var key = $(this).data('key');
-                var username = $(this).closest('tr').find('td:first').text();
-                var currentUser = '<?php echo htmlspecialchars($_SESSION['user_id']); ?>';
-                console.log("Attempting to delete user with key:", key);
-                
-                if ($(this).is(':disabled')) {
-                    alert('Cannot delete this account.');
-                    return;
-                }
-                
-                var confirmMessage = username === currentUser ?
-                    'Are you sure you want to remove yourself as Administrator?' :
-                    'Are you sure you want to remove ' + username + '\'s account?';
-                
-                if (confirm(confirmMessage)) {
-                    $.ajax({
-                        url: 'user.php',
-                        type: 'POST',
-                        data: { deleteAccount: true, key: key },
-                        dataType: 'json',
-                        success: function(response) {
-                            if (response.success) {
-                                if (username === currentUser) {
-                                    alert('Your account has been deleted.');
-                                    window.location.href = 'logout.php';
-                                } else {
-                                    alert(response.message);
-                                    setTimeout(function() {
-                                        location.reload(true);
-                                    }, 100);
-                                }
-                            } else {
-                                alert('Error: ' + response.message);
-                            }
-                        },
-                        error: function(jqXHR, textStatus, errorThrown) {
-                            console.error('AJAX Error:', textStatus, errorThrown);
-                            console.log('Response Text:', jqXHR.responseText);
-                            alert('An error occurred while deleting the account. Please check the server logs for more details.');
-                        }
-                    });
-                }
-            });
-        });
-    </script>
+   
     <?php include 'edit_profile_modal.php'; ?>
     <script src="edit_profile.js"></script>
     <!-- Firebase SDK -->
@@ -773,5 +648,138 @@ if (isset($_POST['updateRole'])) {
     <!-- Reset Listener -->
     <script src="firebase-init.js"></script>
     <script src="reset_listener.js"></script>
+    <script>
+    let allLogs = [];
+    const logsPerPage = 10;
+    let currentPage = 1;
+
+    function fetchLatestLogs() {
+        var category = $('#filterCategory').val();
+        $.ajax({
+            url: 'fetch_logs.php',
+            type: 'GET',
+            data: { category: category },
+            dataType: 'json',
+            success: function(data) {
+                allLogs = data;
+                updateLogTable();
+            },
+            error: function(xhr, status, error) {
+                console.error('Error fetching logs:', error);
+                console.log('Raw response:', xhr.responseText);
+                try {
+                    var jsonResponse = JSON.parse(xhr.responseText);
+                    console.log('Parsed JSON response:', jsonResponse);
+                    allLogs = jsonResponse;
+                    updateLogTable();
+                } catch (e) {
+                    console.log('Failed to parse response as JSON');
+                }
+            }
+        });
+    }
+
+    function updateLogTable() {
+        var tableBody = $('.table tbody');
+        tableBody.empty();
+
+        if (allLogs && allLogs.length > 0) {
+            const startIndex = (currentPage - 1) * logsPerPage;
+            const endIndex = startIndex + logsPerPage;
+            const logsToShow = allLogs.slice(startIndex, endIndex);
+
+            logsToShow.forEach(function(log) {
+                var row = `
+                    <tr>
+                        <td>${escapeHtml(log.username)}</td>
+                        <td>${log.formattedTime.date}</td>
+                        <td>${log.formattedTime.time}</td>
+                        <td>${escapeHtml(log.action)}</td>
+                        <td>${formatDetails(log.details)}</td>
+                    </tr>
+                `;
+                tableBody.append(row);
+            });
+
+            updatePagination();
+        } else {
+            tableBody.append('<tr><td colspan="5" class="text-center">No activity logs found.</td></tr>');
+            $('.pagination-container').hide();
+        }
+    }
+
+    function updatePagination() {
+        const totalPages = Math.ceil(allLogs.length / logsPerPage);
+        const paginationContainer = $('.pagination-container');
+        
+        if (allLogs.length <= logsPerPage) {
+            paginationContainer.hide();
+            return;
+        }
+
+        paginationContainer.show();
+        paginationContainer.empty();
+
+        const pagination = $('<div class="pagination"></div>');
+        
+        // Previous button
+        const prevButton = $(`<button ${currentPage === 1 ? 'disabled' : ''}>
+            <i class="fas fa-arrow-left"></i>
+        </button>`);
+        prevButton.on('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                updateLogTable();
+            }
+        });
+        pagination.append(prevButton);
+
+        // Page indicator
+        pagination.append(`<span>Page ${currentPage} of ${totalPages}</span>`);
+
+        // Next button
+        const nextButton = $(`<button ${currentPage === totalPages ? 'disabled' : ''}>
+            <i class="fas fa-arrow-right"></i>
+        </button>`);
+        nextButton.on('click', () => {
+            if (currentPage < totalPages) {
+                currentPage++;
+                updateLogTable();
+            }
+        });
+        pagination.append(nextButton);
+
+        paginationContainer.append(pagination);
+    }
+
+    function escapeHtml(unsafe) {
+        return unsafe
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+    function formatDetails(details) {
+        return details.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    }
+
+    // Fetch logs every 5 seconds
+    setInterval(fetchLatestLogs, 5000);
+
+    // Initial fetch
+    $(document).ready(function() {
+        fetchLatestLogs();
+        
+        $('#filterCategory').change(function() {
+            currentPage = 1;
+            fetchLatestLogs();
+        });
+
+        // Add pagination container after the table
+        $('.table-responsive').after('<div class="pagination-container"></div>');
+    });
+    </script>
 </body>
 </html>

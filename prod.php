@@ -1,18 +1,19 @@
 <?php
 
-session_start(); // Start the session
+session_start();
 
 require __DIR__.'/vendor/autoload.php';
 require_once __DIR__ . '/firebase-init.php';
+require_once __DIR__ . '/functions.php';
 
 // Prevent caching
-header("Cache-Control: no-cache, no-store, must-revalidate"); // HTTP 1.1
-header("Pragma: no-cache"); // HTTP 1.0
-header("Expires: 0"); // Proxies
+header("Cache-Control: no-cache, no-store, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
 
 // Check if the user is logged in
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php"); // Redirect to login page if not logged in
+    header("Location: login.php");
     exit();
 }
 
@@ -42,49 +43,11 @@ foreach ($users as $key => $user) {
     }
 }
 
-// Function to handle file upload
-function handleFileUpload($file)
-{
-    if (empty($file['name'])) {
-        return null; // No file uploaded
-    }
-
-    $targetDir = "uploads/";
-    $fileName = basename($file["name"]);
-    $targetFilePath = $targetDir . $fileName;
-
-    // Check if file is an actual image
-    if (!file_exists($file["tmp_name"]) || !is_uploaded_file($file["tmp_name"])) {
-        throw new Exception('No file was uploaded.');
-    }
-
-    $check = getimagesize($file["tmp_name"]);
-    if ($check === false) {
-        throw new Exception('File is not an image.');
-    }
-
-    // Check file size
-    if ($file["size"] > 10000000) { // Limit to 10MB
-        throw new Exception('File is too large.');
-    }
-
-    // Allow certain file formats
-    $imageFileType = strtolower(pathinfo($targetFilePath, PATHINFO_EXTENSION));
-    if (!in_array($imageFileType, ['jpg', 'jpeg', 'png'])) {
-        throw new Exception('Only JPG, JPEG, and PNG files are allowed.');
-    }
-
-    // Attempt to move the uploaded file
-    if (!move_uploaded_file($file["tmp_name"], $targetFilePath)) {
-        throw new Exception('Error uploading your file.');
-    }
-
-    return $fileName;
-}
-
 // Function to determine product status
 function determineProductStatus($quantity)
 {
+    $quantity = intval($quantity); // Convert to integer, empty or non-numeric values become 0
+
     if ($quantity <= 2) {
         return "CRITICAL";
     } elseif ($quantity <= 5) {
@@ -94,94 +57,66 @@ function determineProductStatus($quantity)
     }
 }
 
-// Handle form submission for adding a new product
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_product'])) {
-    try {
-        $productName = $_POST['product_name'];
-        $productQuantity = max((int)$_POST['product_quantity'], 2); // Ensure minimum of 2
-        $productPrice = (float)$_POST['product_price'];
-
-        if ($productPrice < 0) {
-            throw new Exception('Price cannot be negative.');
-        }
-
-        $fileName = null;
-        if (!empty($_FILES["product_image"]["name"])) {
-            $fileName = handleFileUpload($_FILES["product_image"]);
-        }
-
-        $productStatus = determineProductStatus($productQuantity);
-
-        $newProduct = [
-            'product_image' => $fileName ?? '',
-            'product_name' => $productName,
-            'product_quantity' => $productQuantity,
-            'product_price' => $productPrice,
-            'product_status' => $productStatus
-        ];
-
-        $newProductRef = $productsRef->push($newProduct);
-        $newProductId = $newProductRef->getKey();
-
-        // Update the product with its ID
-        $productsRef->getChild($newProductId)->update(['product_id' => $newProductId]);
-
-        echo "<script>alert('New product added successfully.'); window.location.href='prod.php';</script>";
-    } catch (Exception $e) {
-        echo "<script>alert('Error: " . addslashes($e->getMessage()) . "');</script>";
-    }
-}
-
-// Handle form submission for editing an existing product
+// Handle form submission for editing a product
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['edit_product'])) {
     try {
         $productId = $_POST['product_id'];
         $productName = $_POST['product_name'];
-        $productQuantity = max((int)$_POST['product_quantity'], 2); // Ensure minimum of 2
+        $productQuantity = max(intval($_POST['product_quantity']), 0); // Ensure non-negative integer
         $productPrice = (float)$_POST['product_price'];
+        $productIdentity = $_POST['product_identity'];
 
         if ($productPrice < 0) {
             throw new Exception('Price cannot be negative.');
         }
 
-        $updates = [
-            'product_name' => $productName,
-            'product_quantity' => $productQuantity,
-            'product_price' => $productPrice,
-            'product_status' => determineProductStatus($productQuantity)
-        ];
+        $productRef = $database->getReference('tables/products/' . $productId);
+        $oldProduct = $productRef->getValue();
+
+        $updates = [];
+        $changes = [];
+
+        if ($oldProduct['product_name'] !== $productName) {
+            $updates['product_name'] = $productName;
+            $changes[] = "**NAME** updated from '{$oldProduct['product_name']}' to '{$productName}'";
+        }
+
+        if ((int)$oldProduct['product_quantity'] !== $productQuantity) {
+            $updates['product_quantity'] = $productQuantity;
+            $changes[] = "**QTY** adjusted from {$oldProduct['product_quantity']} to {$productQuantity}";
+        }
+
+        if (abs((float)$oldProduct['product_price'] - $productPrice) > 0.001) {
+            $updates['product_price'] = $productPrice;
+            $changes[] = "**PRICE** modified from {$oldProduct['product_price']} to {$productPrice}";
+        }
+
+        $updates['product_status'] = determineProductStatus($productQuantity);
 
         if (!empty($_FILES["product_image"]["name"])) {
             $fileName = handleFileUpload($_FILES["product_image"]);
             if ($fileName) {
                 $updates['product_image'] = $fileName;
+                $changes[] = "**IMAGE** updated";
             }
         }
 
-        $productRef = $database->getReference('tables/products/' . $productId);
-        $productRef->update($updates);
+        if (!empty($updates)) {
+            $productRef->update($updates);
+            $changeDetails = implode(". ", $changes);
+            $timestamp = date('Y-m-d H:i:s'); // Current date and time in GMT+8
+            $logMessage = "**{$productIdentity}**: {$changeDetails}";
+            addLogEntry($_SESSION['user_id'], 'Updated Product', $logMessage);
+        } else {
+            $timestamp = date('Y-m-d H:i:s'); // Current date and time in GMT+8
+            $logMessage = "**{$productIdentity}**: No changes made";
+            addLogEntry($_SESSION['user_id'], 'Product Update Attempted', $logMessage, $timestamp);
+        }
 
         echo "<script>alert('Product updated successfully.'); window.location.href='prod.php';</script>";
     } catch (Exception $e) {
         echo "<script>alert('Error: " . addslashes($e->getMessage()) . "');</script>";
     }
-}
-
-// Delete product
-if (isset($_GET['delete'])) {
-    if (count($products) > 2) {
-        $productId = $_GET['delete'];
-        $productRef = $database->getReference('tables/products/' . $productId);
-        $productRef->remove();
-        
-        // Remove the product from the local $products array
-        unset($products[$productId]);
-        
-        echo "<script>alert('Product deleted successfully.'); window.location.href='prod.php';</script>";
-    } else {
-        echo "<script>alert('Cannot delete product. Minimum of 2 products required.'); window.location.href='prod.php';</script>";
-    }
-    exit();
 }
 
 // Function to determine the badge class
@@ -527,7 +462,8 @@ function getBadgeClass($status)
         <nav class="sidebar" id="sidebar" data-user-role="<?php echo $userRole; ?>">
             <a href="dash.php" class="menu-item"><i class="fas fa-box"></i> System Status</a>
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
-            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction Log</a>
+            <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
+            <a href="act.php" class="menu-item" id="activityLogLink"><i class="fas fa-history"></i> Activity Log</a>
             <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
         </nav>
         <!-- Content -->
@@ -576,6 +512,7 @@ function getBadgeClass($status)
                 <div class="modal-body">
                     <form method="POST" action="prod.php" enctype="multipart/form-data">
                         <input type="hidden" name="product_id" id="editProductId">
+                        <input type="hidden" name="product_identity" id="editProductIdentity">
                         <div class="form-group">
                             <label for="edit_product_image">Product Image</label>
                             <input type="file" class="form-control-file" name="product_image" id="editProductImage">
@@ -608,16 +545,25 @@ function getBadgeClass($status)
         // Add this at the beginning of your script
         var userRole = '<?php echo $userRole; ?>';
 
-        function openEditModal(productId, productName, productQuantity, productPrice, productImage) {
-            if (userRole === 'admin') {
-                $('#editProductId').val(productId);
-                $('#editProductName').val(productName);
-                $('#editProductQuantity').val(productQuantity);
-                $('#editProductPrice').val(productPrice);
-                $('#editProductModal').modal('show');
+        // Add this JavaScript function to determine product status
+        function determineProductStatus(quantity) {
+            quantity = parseInt(quantity) || 0; // Convert to integer, use 0 if NaN
+            if (quantity <= 2) {
+                return "CRITICAL";
+            } else if (quantity <= 5) {
+                return "LOW STOCK";
             } else {
-                alert('You do not have permission to edit products.');
+                return "AVAILABLE";
             }
+        }
+
+        function openEditModal(productId, productName, productQuantity, productPrice, productImage, productIdentity) {
+            $('#editProductId').val(productId);
+            $('#editProductName').val(productName);
+            $('#editProductQuantity').val(productQuantity);
+            $('#editProductPrice').val(productPrice);
+            $('#editProductIdentity').val(productIdentity);
+            $('#editProductModal').modal('show');
         }
 
         // Toggle sidebar for small screens
@@ -649,30 +595,29 @@ function getBadgeClass($status)
 
             $.each(products, function(productId, product) {
                 if (product && product.product_name) {
+                    var quantity = parseInt(product.product_quantity) || 0;
+                    var status = determineProductStatus(quantity);
+                    var displayQuantity = quantity > 0 ? quantity : ''; // Display nothing if quantity is 0
                     var row = `
                         <tr>
                             <td><img src="uploads/${product.product_image || ''}" alt="Product Image" style="width: 50px; height: 50px;"></td>
-                            <td>${product.product_name}</td>
-                            <td>${product.product_quantity || ''}</td>
+                            <td>${product.product_identity}: ${product.product_name}</td>
+                            <td>${displayQuantity}</td>
                             <td>${product.product_price || ''}</td>
                             <td>
-                                <span class="badge ${getBadgeClass(product.product_status || '')}">${product.product_status || ''}</span>
+                                <span class="badge ${getBadgeClass(status)}">${status}</span>
                             </td>
                             <td>
                                 <button class="btn btn-warning edit-btn" 
                                     data-id="${productId}" 
                                     data-name="${product.product_name}" 
-                                    data-quantity="${product.product_quantity || 2}" 
+                                    data-quantity="${quantity}" 
                                     data-price="${product.product_price || 0}" 
                                     data-image="${product.product_image || ''}"
-                                    ${userRole !== 'admin' ? 'disabled' : ''}>
+                                    data-identity="${product.product_identity}"
+                                    data-role="${userRole}">
                                     <i class="fas fa-edit"></i> Edit
                                 </button>
-                                ${(Object.keys(products).length > 2 && userRole === 'admin') ? `
-                                    <a href="prod.php?delete=${productId}" class="btn btn-danger delete-btn" data-id="${productId}">
-                                        <i class="fas fa-trash-alt"></i> Delete
-                                    </a>
-                                ` : ''}
                             </td>
                         </tr>
                     `;
@@ -724,29 +669,43 @@ function getBadgeClass($status)
 
         // Use event delegation for edit buttons
         $(document).on('click', '.edit-btn', function() {
-            if (userRole === 'admin') {
-                var productId = $(this).data('id');
-                var productName = $(this).data('name');
-                var productQuantity = $(this).data('quantity');
-                var productPrice = $(this).data('price');
-                var productImage = $(this).data('image');
-                openEditModal(productId, productName, productQuantity, productPrice, productImage);
-            } else {
-                alert('You do not have permission to edit products.');
+            var userRole = $(this).data('role');
+            
+            if (userRole !== 'admin') {
+                alert("You don't have permission to edit products.");
+                return;
             }
+            
+            var productId = $(this).data('id');
+            var productName = $(this).data('name');
+            var productQuantity = $(this).data('quantity');
+            var productPrice = $(this).data('price');
+            var productImage = $(this).data('image');
+            var productIdentity = $(this).data('identity');
+            openEditModal(productId, productName, productQuantity, productPrice, productImage, productIdentity);
         });
 
-        // Add this to the existing <script> tag, after line 736
+        // Modify the existing DOMContentLoaded event listener
         document.addEventListener('DOMContentLoaded', function() {
             const sidebar = document.getElementById('sidebar');
             const userRole = sidebar.dataset.userRole;
             const userManagementLink = document.getElementById('userManagementLink');
+            const activityLogLink = document.getElementById('activityLogLink'); // Add this line
 
-            userManagementLink.addEventListener('click', function(event) {
+            function restrictAccess(event, linkName) {
                 if (userRole !== 'admin') {
                     event.preventDefault();
-                    alert("You don't have permission to access User Management.");
+                    alert(`You don't have permission to access ${linkName}.`);
                 }
+            }
+
+            userManagementLink.addEventListener('click', function(event) {
+                restrictAccess(event, 'User Management');
+            });
+
+            // Add this new event listener for Activity Log
+            activityLogLink.addEventListener('click', function(event) {
+                restrictAccess(event, 'Activity Log');
             });
         });
     </script>
