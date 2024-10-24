@@ -480,7 +480,7 @@ function getBadgeClass($status)
                         <table class="table table-bordered">
                             <thead>
                                 <tr>
-                                    <th>Image</th>
+                                    <th>ID</th>
                                     <th>Product Name</th>
                                     <th>Quantity</th>
                                     <th>Price</th>
@@ -510,13 +510,9 @@ function getBadgeClass($status)
                     </button>
                 </div>
                 <div class="modal-body">
-                    <form method="POST" action="prod.php" enctype="multipart/form-data">
+                    <form method="POST" action="prod.php">
                         <input type="hidden" name="product_id" id="editProductId">
                         <input type="hidden" name="product_identity" id="editProductIdentity">
-                        <div class="form-group">
-                            <label for="edit_product_image">Product Image</label>
-                            <input type="file" class="form-control-file" name="product_image" id="editProductImage">
-                        </div>
                         <div class="form-group">
                             <label for="edit_product_name">Product Name</label>
                             <input type="text" class="form-control" name="product_name" id="editProductName" required>
@@ -557,7 +553,7 @@ function getBadgeClass($status)
             }
         }
 
-        function openEditModal(productId, productName, productQuantity, productPrice, productImage, productIdentity) {
+        function openEditModal(productId, productName, productQuantity, productPrice, productIdentity) {
             $('#editProductId').val(productId);
             $('#editProductName').val(productName);
             $('#editProductQuantity').val(productQuantity);
@@ -600,8 +596,8 @@ function getBadgeClass($status)
                     var displayQuantity = quantity > 0 ? quantity : ''; // Display nothing if quantity is 0
                     var row = `
                         <tr>
-                            <td><img src="uploads/${product.product_image || ''}" alt="Product Image" style="width: 50px; height: 50px;"></td>
-                            <td>${product.product_identity}: ${product.product_name}</td>
+                            <td><strong>${product.product_identity}</strong></td>
+                            <td>${product.product_name}</td>
                             <td>${displayQuantity}</td>
                             <td>${product.product_price || ''}</td>
                             <td>
@@ -613,7 +609,6 @@ function getBadgeClass($status)
                                     data-name="${product.product_name}" 
                                     data-quantity="${quantity}" 
                                     data-price="${product.product_price || 0}" 
-                                    data-image="${product.product_image || ''}"
                                     data-identity="${product.product_identity}"
                                     data-role="${userRole}">
                                     <i class="fas fa-edit"></i> Edit
@@ -680,9 +675,8 @@ function getBadgeClass($status)
             var productName = $(this).data('name');
             var productQuantity = $(this).data('quantity');
             var productPrice = $(this).data('price');
-            var productImage = $(this).data('image');
             var productIdentity = $(this).data('identity');
-            openEditModal(productId, productName, productQuantity, productPrice, productImage, productIdentity);
+            openEditModal(productId, productName, productQuantity, productPrice, productIdentity);
         });
 
         // Modify the existing DOMContentLoaded event listener
