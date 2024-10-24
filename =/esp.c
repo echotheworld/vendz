@@ -118,41 +118,12 @@ void updateESP32Presence() {
   }
 }
 
-void setupWiFi() {
-  WiFi.mode(WIFI_STA); // Set WiFi to station mode
-  WiFi.begin(); // Try to connect using saved credentials
-
-  Serial.println("Connecting to WiFi...");
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) { // Try for about 10 seconds
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConnected to WiFi");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    isConnectedToWiFi = true;
-  } else {
-    Serial.println("\nFailed to connect to WiFi. Please use the reset button to enter AP mode.");
-    isConnectedToWiFi = false;
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   pinMode(WIFI_RESET_PIN, INPUT_PULLUP);
   delay(1000);
   Serial.println("ESP32 Starting Up");
   Serial.println("//");
-
-  setupWiFi();
-
-  if (!isConnectedToWiFi) {
-    return;
-  }
 
   // WiFiManager
   wifiManager.autoConnect("HygienexCare_AP", "password");
@@ -215,15 +186,6 @@ void setup() {
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi connection lost. Attempting to reconnect...");
-    setupWiFi();
-    if (!isConnectedToWiFi) {
-      delay(10000); // Wait 10 seconds before trying again
-      return;
-    }
-  }
-
   unsigned long currentMillis = millis();
   
   if (currentMillis - lastPresenceUpdateTime > presenceUpdateInterval) {
@@ -636,19 +598,9 @@ void checkWiFiResetButton() {
   if (digitalRead(WIFI_RESET_PIN) == LOW) {
     delay(50); // Debounce
     if (digitalRead(WIFI_RESET_PIN) == LOW) {
-      Serial.println("WiFi Reset button pressed. Starting AP mode...");
-      WiFiManager wifiManager;
+      Serial.println("WiFi Reset button pressed. Clearing settings and restarting...");
       wifiManager.resetSettings();
-      wifiManager.setConfigPortalTimeout(180); // Set timeout to 3 minutes
-      if (!wifiManager.startConfigPortal("HygienexCare_AP", "password")) {
-        Serial.println("Failed to connect and hit timeout");
-      } else {
-        Serial.println("Connected to new WiFi");
-      }
       ESP.restart();
     }
   }
 }
-
-
-
