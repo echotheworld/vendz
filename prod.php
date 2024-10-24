@@ -512,7 +512,10 @@ function getBadgeClass($status)
                 <div class="modal-body">
                     <form method="POST" action="prod.php">
                         <input type="hidden" name="product_id" id="editProductId">
-                        <input type="hidden" name="product_identity" id="editProductIdentity">
+                        <div class="form-group">
+                            <label for="edit_product_identity">Product ID</label>
+                            <input type="text" class="form-control" name="product_identity" id="editProductIdentity" readonly>
+                        </div>
                         <div class="form-group">
                             <label for="edit_product_name">Product Name</label>
                             <input type="text" class="form-control" name="product_name" id="editProductName" required>
@@ -555,10 +558,10 @@ function getBadgeClass($status)
 
         function openEditModal(productId, productName, productQuantity, productPrice, productIdentity) {
             $('#editProductId').val(productId);
+            $('#editProductIdentity').val(productIdentity);
             $('#editProductName').val(productName);
             $('#editProductQuantity').val(productQuantity);
             $('#editProductPrice').val(productPrice);
-            $('#editProductIdentity').val(productIdentity);
             $('#editProductModal').modal('show');
         }
 
