@@ -427,7 +427,7 @@ foreach ($users as $key => $user) {
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
             <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
             <a href="act.php" class="menu-item" id="activityLogLink"><i class="fas fa-history"></i> Activity Log</a>
-            <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
+            <a href="#" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
         </nav>
 
         <!-- Main Content Area -->
@@ -730,7 +730,7 @@ foreach ($users as $key => $user) {
         }
 
         // Try to retrieve last known status from localStorage
-        lastKnownStatus = localStorage.getItem('lastKnownStatus') || 'Unknown';
+        lastKnownStatus = localStorage.getItem('lastKnownStatus') || 'Connecting';
 
         // Initial update
         updateConnectionUI(lastKnownStatus);
@@ -757,10 +757,6 @@ foreach ($users as $key => $user) {
                     alert(`You don't have permission to access ${linkName}.`);
                 }
             }
-
-            userManagementLink.addEventListener('click', function(event) {
-                restrictAccess(event, 'User Management');
-            });
 
             // Add this new event listener for Activity Log
             activityLogLink.addEventListener('click', function(event) {
@@ -892,5 +888,51 @@ foreach ($users as $key => $user) {
             </div>
         </div>
     </div>
+
+    <!-- Include the password prompt modal -->
+    <?php include 'promptpass.php'; ?>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const sidebar = document.getElementById('sidebar');
+        const userRole = sidebar.dataset.userRole;
+        const userManagementLink = document.getElementById('userManagementLink');
+    
+        userManagementLink.addEventListener('click', function(event) {
+            event.preventDefault();
+            if (userRole !== 'admin') {
+                alert("You don't have permission to access User Management.");
+            } else {
+                $('#passwordPromptModal').modal('show');
+            }
+        });
+    
+        $('#confirmPasswordPrompt').click(function() {
+            const password = $('#adminPasswordPrompt').val();
+            verifyAdminPassword(password);
+        });
+    
+        function verifyAdminPassword(password) {
+            $.ajax({
+                url: 'verify_admin_password.php',
+                type: 'POST',
+                data: { password: password },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        $('#passwordPromptModal').modal('hide');
+                        window.location.href = 'user.php';
+                    } else {
+                        alert('Incorrect password. Please try again.');
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while verifying the password.');
+                }
+            });
+        }
+    });
+    </script>
+
 </body>
 </html>

@@ -447,7 +447,7 @@ animation: blinkHighlight 3s ease-in-out;
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
             <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
             <a href="act.php" class="menu-item" id="activityLogLink"><i class="fas fa-history"></i> Activity Log</a>
-            <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
+            <a href="#" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
         </nav>  
 <!-- Main Content -->
 <div class="content">
@@ -726,7 +726,7 @@ $(document).ready(function() {
     listenForTransactionDeletions();
 });
 
-// Reset button functionality
+// Replace the existing reset button functionality with this:
 $('#resetButton').click(function() {
     var userRole = $(this).data('role');
     
@@ -735,28 +735,100 @@ $('#resetButton').click(function() {
         return;
     }
     
-    if (confirm('Are you sure you want to delete all transactions? This action cannot be undone.')) {
-        $.ajax({
-            url: 'trans.php',
-            type: 'POST',
-            data: { reset_transactions: 1 },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    alert(response.message);
-                    allTransactions = [];
-                    loadTransactions(1);
-                    updateUIForEmptyTransactions();
-                } else {
-                    alert('Error: ' + response.message);
-                }
-            },
-            error: function() {
-                alert('An error occurred while resetting transactions.');
-            }
-        });
-    }
+    showPasswordPrompt();
 });
+
+function showPasswordPrompt() {
+    const dialog = $(`
+        <div class="modal fade" id="passwordModal" tabindex="-1" role="dialog" aria-labelledby="passwordModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="passwordModalLabel">Authentication Required</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3">You are about to perform a critical operation that will permanently delete all transaction records. For security purposes, please enter your administrator password to proceed.</p>
+                        <p class="mb-3"><strong>Note:</strong> This action cannot be undone. Please ensure you have any necessary backups before proceeding.</p>
+                        <input type="password" id="adminPassword" class="form-control" placeholder="Enter your administrator password">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="confirmPassword">Verify</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    $('body').append(dialog);
+    $('#passwordModal').modal('show');
+
+    $('#confirmPassword').click(function() {
+        const password = $('#adminPassword').val();
+        verifyAdminPassword(password);
+    });
+
+    $('#passwordModal').on('hidden.bs.modal', function () {
+        $(this).remove();
+    });
+}
+
+function verifyAdminPassword(password) {
+    $.ajax({
+        url: 'verify_admin_password.php',
+        type: 'POST',
+        data: { password: password },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                $('#passwordModal').modal('hide');
+                confirmResetTransactions();
+            } else {
+                alert('Incorrect password. Please try again.');
+            }
+        },
+        error: function() {
+            alert('An error occurred while verifying the password.');
+        }
+    });
+}
+
+function confirmResetTransactions() {
+    const confirmMessage = "You are about to delete all transaction records. This action cannot be undone.\n\n" +
+        "Please type 'remove' to confirm that you want to permanently delete all transactions:";
+    
+    const userInput = prompt(confirmMessage);
+
+    if (userInput !== null) {  // User didn't press Cancel
+        if (userInput.toLowerCase() === 'remove') {
+            $.ajax({
+                url: 'trans.php',
+                type: 'POST',
+                data: { reset_transactions: 1 },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.message);
+                        allTransactions = [];
+                        loadTransactions(1);
+                        updateUIForEmptyTransactions();
+                    } else {
+                        alert('Error: ' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while resetting transactions.');
+                }
+            });
+        } else {
+            alert("Reset cancelled. You must type 'remove' to proceed with deleting all transactions.");
+        }
+    }
+    // If user clicks 'Cancel' on the prompt, nothing happens
+}
 
 // Function to calculate summary data
 function calculateSummary(transactions) {
@@ -1040,10 +1112,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    userManagementLink.addEventListener('click', function(event) {
-        restrictAccess(event, 'User Management');
-    });
-
     // Add this new event listener for Activity Log
     activityLogLink.addEventListener('click', function(event) {
         restrictAccess(event, 'Activity Log');
@@ -1090,5 +1158,51 @@ $(document).ready(function() {
 <script src="reset_listener.js"></script>
 <script src="firebase-init.js"></script>
 <script src="reset_listener.js"></script>
+
+<!-- Include the password prompt modal -->
+<?php include 'promptpass.php'; ?>
+
+<!-- Add this script at the end of the file, just before the closing </body> tag -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sidebar = document.getElementById('sidebar');
+    const userRole = sidebar.dataset.userRole;
+    const userManagementLink = document.getElementById('userManagementLink');
+
+    userManagementLink.addEventListener('click', function(event) {
+        event.preventDefault();
+        if (userRole !== 'admin') {
+            alert("You don't have permission to access User Management.");
+        } else {
+            $('#passwordPromptModal').modal('show');
+        }
+    });
+
+    $('#confirmPasswordPrompt').click(function() {
+        const password = $('#adminPasswordPrompt').val();
+        verifyAdminPassword(password);
+    });
+
+    function verifyAdminPassword(password) {
+        $.ajax({
+            url: 'verify_admin_password.php',
+            type: 'POST',
+            data: { password: password },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    $('#passwordPromptModal').modal('hide');
+                    window.location.href = 'user.php';
+                } else {
+                    alert('Incorrect password. Please try again.');
+                }
+            },
+            error: function() {
+                alert('An error occurred while verifying the password.');
+            }
+        });
+    }
+});
+</script>
 </body>
 </html>

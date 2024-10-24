@@ -435,6 +435,94 @@ function getBadgeClass($status)
         .search-bar-container input[type="text"] {
             padding-right: 40px;
         }
+
+        .spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none; /* Hide by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .spinner-box {
+            text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .spinner {
+            width: 70.4px;
+            height: 70.4px;
+            --clr: #66FF03;
+            --clr-alpha: rgba(40, 167, 69, 0.1);
+            animation: spinner 1.6s infinite ease;
+            transform-style: preserve-3d;
+            margin: 0 auto 20px;
+        }
+
+        .spinner > div {
+            background-color: var(--clr-alpha);
+            height: 100%;
+            position: absolute;
+            width: 100%;
+            border: 3.5px solid var(--clr);
+        }
+
+        .spinner div:nth-of-type(1) {
+            transform: translateZ(-35.2px) rotateY(180deg);
+        }
+
+        .spinner div:nth-of-type(2) {
+            transform: rotateY(-270deg) translateX(50%);
+            transform-origin: top right;
+        }
+
+        .spinner div:nth-of-type(3) {
+            transform: rotateY(270deg) translateX(-50%);
+            transform-origin: center left;
+        }
+
+        .spinner div:nth-of-type(4) {
+            transform: rotateX(90deg) translateY(-50%);
+            transform-origin: top center;
+        }
+
+        .spinner div:nth-of-type(5) {
+            transform: rotateX(-90deg) translateY(50%);
+            transform-origin: bottom center;
+        }
+
+        .spinner div:nth-of-type(6) {
+            transform: translateZ(35.2px);
+        }
+
+        @keyframes spinner {
+            0% {
+                transform: rotate(45deg) rotateX(-25deg) rotateY(25deg);
+            }
+
+            50% {
+                transform: rotate(45deg) rotateX(-385deg) rotateY(25deg);
+            }
+
+            100% {
+                transform: rotate(45deg) rotateX(-385deg) rotateY(385deg);
+            }
+        }
+
+        .spinner-text {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #ffffff;
+            white-space: nowrap;
+        }
     </style>
     
 </head>
@@ -464,7 +552,7 @@ function getBadgeClass($status)
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
             <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
             <a href="act.php" class="menu-item" id="activityLogLink"><i class="fas fa-history"></i> Activity Log</a>
-            <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
+            <a href="#" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
         </nav>
         <!-- Content -->
         <div class="content">
@@ -510,7 +598,7 @@ function getBadgeClass($status)
                     </button>
                 </div>
                 <div class="modal-body">
-                    <form method="POST" action="prod.php">
+                    <form method="POST" action="prod.php" id="editProductForm">
                         <input type="hidden" name="product_id" id="editProductId">
                         <div class="form-group">
                             <label for="edit_product_identity">Product ID</label>
@@ -518,15 +606,15 @@ function getBadgeClass($status)
                         </div>
                         <div class="form-group">
                             <label for="edit_product_name">Product Name</label>
-                            <input type="text" class="form-control" name="product_name" id="editProductName" required>
+                            <input type="text" class="form-control" name="product_name" id="editProductName" required maxlength="15" pattern="[A-Za-z\s]+" title="Letters only, maximum 15 characters">
                         </div>
                         <div class="form-group">
                             <label for="edit_product_quantity">Quantity</label>
-                            <input type="number" class="form-control" name="product_quantity" id="editProductQuantity" required>
+                            <input type="number" class="form-control" name="product_quantity" id="editProductQuantity" required min="2" max="10" step="1">
                         </div>
                         <div class="form-group">
                             <label for="edit_product_price">Price</label>
-                            <input type="number" class="form-control" name="product_price" id="editProductPrice" step="0.01" required>
+                            <input type="number" class="form-control" name="product_price" id="editProductPrice" required min="1" max="99" step="1">
                         </div>
                         <button type="submit" name="edit_product" class="btn btn-warning">Update</button>
                     </form>
@@ -544,7 +632,7 @@ function getBadgeClass($status)
         // Add this at the beginning of your script
         var userRole = '<?php echo $userRole; ?>';
 
-        // Add this JavaScript function to determine product status
+        // Add the determineProductStatus function to JavaScript
         function determineProductStatus(quantity) {
             quantity = parseInt(quantity) || 0; // Convert to integer, use 0 if NaN
             if (quantity <= 2) {
@@ -556,13 +644,122 @@ function getBadgeClass($status)
             }
         }
 
+        function checkESP32Presence() {
+            return new Promise(function(resolve, reject) {
+                const presenceRef = firebase.database().ref('esp32_presence');
+                let changeCount = 0;
+                const startTime = Date.now();
+
+                const listener = presenceRef.on('value', function(snapshot) {
+                    changeCount++;
+                    console.log('ESP32 presence change detected:', snapshot.val());
+
+                    if (Date.now() - startTime >= 13000) {
+                        presenceRef.off('value', listener);
+                        console.log('ESP32 presence check completed. Changes detected:', changeCount);
+                        resolve(changeCount >= 2);
+                    }
+                });
+
+                // Ensure we resolve after 13 seconds even if no changes were detected
+                setTimeout(function() {
+                    presenceRef.off('value', listener);
+                    console.log('ESP32 presence check completed. Changes detected:', changeCount);
+                    resolve(changeCount >= 2);
+                }, 13000);
+            });
+        }
+
+        function showLoading() {
+            $('.spinner-overlay').css('display', 'flex');
+        }
+
+        function hideLoading() {
+            $('.spinner-overlay').css('display', 'none');
+        }
+
+        function updateProduct(productData) {
+            showLoading();
+            checkESP32Presence().then(function(isConnected) {
+                if (isConnected) {
+                    // Proceed with the update
+                    var updates = {};
+                    updates['/tables/products/' + productData.product_id] = productData;
+                    firebase.database().ref().update(updates).then(function() {
+                        hideLoading();
+                        reloadWithAlert('Product updated successfully.', true);
+                    }).catch(function(error) {
+                        hideLoading();
+                        reloadWithAlert('Error updating Firebase: ' + error.message, false);
+                    });
+                } else {
+                    hideLoading();
+                    reloadWithAlert('Unable to connect to the device. Please check your device connection and try again.', false);
+                }
+            });
+        }
+
+        function reloadWithAlert(message, shouldReload) {
+            alert(message);
+            
+            if (shouldReload) {
+                window.location.reload();
+            }
+        }
+
+        // Modify your existing update button click handler
+        $(document).on('click', '.edit-btn', function() {
+            var userRole = $(this).data('role');
+            
+            if (userRole !== 'admin') {
+                alert("You don't have permission to edit products.");
+                return;
+            }
+            
+            var productId = $(this).data('id');
+            var productName = $(this).data('name');
+            var productQuantity = $(this).data('quantity');
+            var productPrice = $(this).data('price');
+            var productIdentity = $(this).data('identity');
+            openEditModal(productId, productName, productQuantity, productPrice, productIdentity);
+        });
+
+        $('#editProductModal form').on('submit', function(e) {
+            e.preventDefault();
+            const productData = {
+                product_id: $('#editProductId').val(),
+                product_name: $('#editProductName').val(),
+                product_quantity: parseInt($('#editProductQuantity').val(), 10),
+                product_price: parseFloat($('#editProductPrice').val()), // Store as float in Firebase
+                product_identity: $('#editProductIdentity').val()
+            };
+
+            // Show confirmation prompt
+            const confirmMessage = "Are you sure you want to update this product?\n\n" +
+                "Please type 'confirm' to verify that you have accurately counted the stock " +
+                "and the quantity entered reflects the current inventory:";
+            
+            const userInput = prompt(confirmMessage);
+
+            if (userInput !== null) {  // User didn't press Cancel
+                if (userInput.toLowerCase() === 'confirm') {
+                    updateProduct(productData);
+                    $('#editProductModal').modal('hide');
+                } else {
+                    alert("Update cancelled. You must type 'confirm' to proceed with the update.");
+                }
+            }
+            // If user clicks 'Cancel' on the prompt, nothing happens and the modal stays open
+        });
+
         function openEditModal(productId, productName, productQuantity, productPrice, productIdentity) {
             $('#editProductId').val(productId);
             $('#editProductIdentity').val(productIdentity);
             $('#editProductName').val(productName);
             $('#editProductQuantity').val(productQuantity);
-            $('#editProductPrice').val(productPrice);
+            $('#editProductPrice').val(Math.round(productPrice)); // Round to nearest integer
             $('#editProductModal').modal('show');
+            setupEditModalValidation();
         }
 
         // Toggle sidebar for small screens
@@ -665,52 +862,136 @@ function getBadgeClass($status)
             updateProductTable(updatedProducts);
         });
 
-        // Use event delegation for edit buttons
-        $(document).on('click', '.edit-btn', function() {
-            var userRole = $(this).data('role');
-            
-            if (userRole !== 'admin') {
-                alert("You don't have permission to edit products.");
-                return;
-            }
-            
-            var productId = $(this).data('id');
-            var productName = $(this).data('name');
-            var productQuantity = $(this).data('quantity');
-            var productPrice = $(this).data('price');
-            var productIdentity = $(this).data('identity');
-            openEditModal(productId, productName, productQuantity, productPrice, productIdentity);
-        });
 
         // Modify the existing DOMContentLoaded event listener
         document.addEventListener('DOMContentLoaded', function() {
             const sidebar = document.getElementById('sidebar');
             const userRole = sidebar.dataset.userRole;
             const userManagementLink = document.getElementById('userManagementLink');
-            const activityLogLink = document.getElementById('activityLogLink'); // Add this line
-
+            const activityLogLink = document.getElementById('activityLogLink');
+ 
             function restrictAccess(event, linkName) {
                 if (userRole !== 'admin') {
                     event.preventDefault();
                     alert(`You don't have permission to access ${linkName}.`);
+                } else if (linkName === 'User Management') {
+                    event.preventDefault();
+                    $('#passwordPromptModal').modal('show');
                 }
             }
-
+ 
             userManagementLink.addEventListener('click', function(event) {
                 restrictAccess(event, 'User Management');
             });
-
-            // Add this new event listener for Activity Log
+ 
             activityLogLink.addEventListener('click', function(event) {
                 restrictAccess(event, 'Activity Log');
             });
+ 
+            $('#confirmPasswordPrompt').click(function() {
+                const password = $('#adminPasswordPrompt').val();
+                verifyAdminPassword(password);
+            });
+ 
+            function verifyAdminPassword(password) {
+                $.ajax({
+                    url: 'verify_admin_password.php',
+                    type: 'POST',
+                    data: { password: password },
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.success) {
+                            $('#passwordPromptModal').modal('hide');
+                            window.location.href = 'user.php';
+                        } else {
+                            alert('Incorrect password. Please try again.');
+                        }
+                    },
+                    error: function() {
+                        alert('An error occurred while verifying the password.');
+                    }
+                });
+            }
+        });
+
+        // Add these functions after your existing JavaScript code
+        function setupEditModalValidation() {
+            const nameInput = document.getElementById('editProductName');
+            const quantityInput = document.getElementById('editProductQuantity');
+            const priceInput = document.getElementById('editProductPrice');
+
+            nameInput.addEventListener('input', function(e) {
+                this.value = this.value.replace(/[^A-Za-z\s]/g, '').slice(0, 15);
+            });
+
+            quantityInput.addEventListener('input', function(e) {
+                let value = parseInt(this.value);
+                if (isNaN(value) || value < 2) this.value = 2;
+                if (value > 10) this.value = 10;
+            });
+
+            priceInput.addEventListener('input', function(e) {
+                let value = this.value.replace(/[^0-9]/g, '');
+                if (value.length > 2) {
+                    value = value.slice(0, 2);
+                }
+                let intValue = parseInt(value);
+                if (isNaN(intValue) || intValue < 1) {
+                    this.value = '1';
+                } else if (intValue > 99) {
+                    this.value = '99';
+                } else {
+                    this.value = value;
+                }
+            });
+        }
+
+        // Add form submission validation
+        $('#editProductForm').on('submit', function(e) {
+            const name = $('#editProductName').val();
+            const quantity = parseInt($('#editProductQuantity').val(), 10);
+            const price = parseInt($('#editProductPrice').val()); // Parse as integer for validation
+
+            if (name.length > 15 || !/^[A-Za-z\s]+$/.test(name)) {
+                alert('Product name must be letters only and maximum 15 characters.');
+                e.preventDefault();
+                return false;
+            }
+
+            if (isNaN(quantity) || quantity < 2 || quantity > 10) {
+                alert('Quantity must be between 2 and 10.');
+                e.preventDefault();
+                return false;
+            }
+
+            if (isNaN(price) || price < 1 || price > 99) {
+                alert('Price must be between 1 and 99.');
+                e.preventDefault();
+                return false;
+            }
+
+            // If all validations pass, the form will submit normally
         });
     </script>
-    <!-- Add this line just before the closing </body> tag (you'll need to find the appropriate line number) -->
     <?php include 'edit_profile_modal.php'; ?>
-
-    <!-- Add this line to include the edit_profile.js file (with the other script includes, typically near the end of the file) -->
     <script src="edit_profile.js"></script>
     <script src="reset_listener.js"></script>
+    <div class="spinner-overlay">
+        <div class="spinner-box">
+            <div class="spinner">
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <div class="spinner-text">Updating product and checking device connection...</div>
+        </div>
+    </div>
+    
+    <!-- Include the password prompt modal -->
+    <?php include 'promptpass.php'; ?>
+    
 </body>
 </html>

@@ -173,6 +173,24 @@ if (isset($_POST['updateRole'])) {
     exit;
 }
 
+// After session_start() and other initial checks
+
+// Fetch the current user's role
+$userRole = '';
+$userId = $_SESSION['user_id'];
+$usersRef = $database->getReference('tables/user');
+$snapshot = $usersRef->getSnapshot();
+$users = $snapshot->getValue();
+
+foreach ($users as $key => $user) {
+    if ($user['user_id'] === $userId) {
+        $userRole = $user['u_role'];
+        break;
+    }
+}
+
+// Now $userRole contains the current user's role
+
 ?>
 
 <!DOCTYPE html>
@@ -598,7 +616,7 @@ if (isset($_POST['updateRole'])) {
             <a href="prod.php" class="menu-item"><i class="fas fa-shopping-bag"></i> Product Inventory</a>
             <a href="trans.php" class="menu-item"><i class="fas fa-tag"></i> Transaction History</a>
             <a href="act.php" class="menu-item"><i class="fas fa-history"></i> Activity Log</a>
-            <a href="user.php" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
+            <a href="#" class="menu-item" id="userManagementLink"><i class="fas fa-cog"></i> User Management</a>
         </nav>
         <!-- Main Content -->
         <div class="content">
@@ -779,7 +797,49 @@ if (isset($_POST['updateRole'])) {
 
         // Add pagination container after the table
         $('.table-responsive').after('<div class="pagination-container"></div>');
+
+        // User Management link handling
+        const sidebar = document.getElementById('sidebar');
+        const userRole = sidebar.dataset.userRole;
+        const userManagementLink = document.getElementById('userManagementLink');
+
+        userManagementLink.addEventListener('click', function(event) {
+            event.preventDefault();
+            if (userRole === 'admin') {
+                $('#passwordPromptModal').modal('show');
+            } else {
+                alert("You don't have permission to access User Management.");
+            }
+        });
+
+        $('#confirmPasswordPrompt').click(function() {
+            const password = $('#adminPasswordPrompt').val();
+            verifyAdminPassword(password);
+        });
+
+        function verifyAdminPassword(password) {
+            $.ajax({
+                url: 'verify_admin_password.php',
+                type: 'POST',
+                data: { password: password },
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        $('#passwordPromptModal').modal('hide');
+                        window.location.href = 'user.php';
+                    } else {
+                        alert('Incorrect password. Please try again.');
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while verifying the password.');
+                }
+            });
+        }
     });
     </script>
+ 
+ <!-- Include the password prompt modal -->
+ <?php include 'promptpass.php'; ?>
 </body>
 </html>
