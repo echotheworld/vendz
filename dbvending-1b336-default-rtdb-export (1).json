@@ -1,0 +1,71 @@
+{
+  "activity_logs": {
+    "-OA3b-sVrtNIJcXfaRRZ": {
+      "action": "Updated Product",
+      "details": "**Product 1**: **NAME** updated to 'Napkin'. **QTY** adjusted to 5. **PRICE** modified to 5",
+      "timestamp": 1729875414,
+      "username": "echo"
+    },
+    "-OA3b6mhIAiLt3oct680": {
+      "action": "Updated Product",
+      "details": "**Product 2**: **NAME** updated to 'Wipes'. **QTY** adjusted to 5. **PRICE** modified to 5",
+      "timestamp": 1729875442,
+      "username": "echo"
+    }
+  },
+  "esp32_presence": 2,
+  "tables": {
+    "products": {
+      "-O8GSb1L_mn9CLR1Z0Ly": {
+        "product_id": "-O8GSb1L_mn9CLR1Z0Ly",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "product_price": 5,
+        "product_quantity": 4
+      },
+      "-O8GSldDvFUT5olxHCiX": {
+        "product_id": "-O8GSldDvFUT5olxHCiX",
+        "product_identity": "Product 2",
+        "product_name": "Wipes",
+        "product_price": 5,
+        "product_quantity": 3
+      }
+    },
+    "transactions": {
+      "b44d42fb": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 2",
+        "product_name": "Wipes",
+        "remaining": 4,
+        "time": "00:59:06"
+      },
+      "b86691d3": {
+        "amount": 5,
+        "date": "2024-10-5",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "remaining": 4,
+        "time": "00:58:05"
+      },
+      "fcd3aae2": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 2",
+        "product_name": "Wipes",
+        "remaining": 3,
+        "time": "00:59:50"
+      }
+    },
+    "user": {
+      "-O8FwN7EsoD-lRKW8z8z": {
+        "first_login": false,
+        "u_role": "admin",
+        "user_contact": "09542568541",
+        "user_email": "jrchxjn@gmail.com",
+        "user_id": "echo",
+        "user_pass": "$2y$10$024.J.oIKxO8PMmbphGHqen5hzmjJfoUjUabioF8PhauH.rt75TA2"
+      }
+    }
+  }
+}

@@ -470,23 +470,24 @@ animation: blinkHighlight 3s ease-in-out;
             </div>
         </div>
         <div class="card-body">
-            <!-- Add date filter form -->
+            <!-- Add this new form for date filtering -->
             <form id="dateFilterForm" class="mb-3">
                 <div class="form-row">
                     <div class="col-md-4 mb-3">
-                        <label for="startDate">Start Date:</label>
-                        <input type="date" id="startDate" class="form-control">
+                        <label for="startDate">Start Date</label>
+                        <input type="date" class="form-control" id="startDate" name="startDate">
                     </div>
                     <div class="col-md-4 mb-3">
-                        <label for="endDate">End Date:</label>
-                        <input type="date" id="endDate" class="form-control">
+                        <label for="endDate">End Date</label>
+                        <input type="date" class="form-control" id="endDate" name="endDate">
                     </div>
                     <div class="col-md-4 mb-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary">Filter</button>
-                        <button type="button" id="resetFilter" class="btn btn-secondary ml-2">Reset</button>
+                        <button type="submit" class="btn btn-primary mr-2">Filter</button>
+                        <button type="button" id="resetFilter" class="btn btn-secondary">Clear</button>
                     </div>
                 </div>
             </form>
+            
             <div class="table-responsive">
                 <table class="table table-bordered table-hover" id="transactionTable">
                     <thead>
@@ -572,10 +573,11 @@ let allTransactions = [];
 const transactionsPerPage = 10;
 let currentPage = 1;
 
+// Add these variables at the top of your script
 let startDate = null;
 let endDate = null;
-let earliestTransactionDate = null;
 
+// Modify the loadExistingTransactions function
 function loadExistingTransactions() {
     transactionsRef.once('value')
     .then(function(snapshot) {
@@ -590,34 +592,22 @@ function loadExistingTransactions() {
                 return dateB - dateA;
             });
 
-            // Find the earliest transaction date
-            earliestTransactionDate = allTransactions[allTransactions.length - 1].date;
-
-            // Set the min attribute for date inputs
-            $('#startDate, #endDate').attr('min', earliestTransactionDate);
-
-            // Set the max attribute to today's date
-            const today = new Date().toISOString().split('T')[0];
-            $('#startDate, #endDate').attr('max', today);
-
             // Apply date filter if set
             if (startDate && endDate) {
-                allTransactions = allTransactions.filter(transaction => {
-                    const transactionDate = new Date(transaction.date);
+                allTransactions = allTransactions.filter(t => {
+                    const transactionDate = new Date(t.date);
                     return transactionDate >= startDate && transactionDate <= endDate;
                 });
             }
 
-            mostRecentTransactionKey = allTransactions[0]?.key || null;
             updateTransactionTable();
         } else {
-            console.log('No existing transactions found');
-            allTransactions = [];
+            $('#transactionTable tbody').html('<tr><td colspan="5" class="text-center">No transactions available</td></tr>');
             updateUIForEmptyTransactions();
         }
     })
     .catch(function(error) {
-        console.error('Error loading existing transactions:', error);
+        console.error("Error loading transactions:", error);
     });
 }
 
@@ -862,7 +852,7 @@ function calculateSummary(transactions) {
     };
 }
 
-// Replace the existing exportPDF function with this new version
+// Replace the existing showExportDialog function with this updated version
 function showExportDialog() {
     const dialog = $(`
         <div class="modal fade" id="exportModal" tabindex="-1" role="dialog" aria-labelledby="exportModalLabel" aria-hidden="true">
@@ -875,6 +865,7 @@ function showExportDialog() {
                         </button>
                     </div>
                     <div class="modal-body">
+                        <p>Choose an export option:</p>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="radio" name="exportOption" id="exportAll" value="all" checked>
                             <label class="form-check-label" for="exportAll">
@@ -884,16 +875,16 @@ function showExportDialog() {
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="radio" name="exportOption" id="exportFiltered" value="filtered">
                             <label class="form-check-label" for="exportFiltered">
-                                Export filtered transactions
+                                Export transactions within a specific date range
                             </label>
                         </div>
-                        <div id="dateFilterFields" style="display: none;">
+                        <div id="dateRangeInputs" style="display: none;">
                             <div class="form-group">
-                                <label for="exportStartDate">Start Date:</label>
+                                <label for="exportStartDate">Start Date</label>
                                 <input type="date" class="form-control" id="exportStartDate">
                             </div>
                             <div class="form-group">
-                                <label for="exportEndDate">End Date:</label>
+                                <label for="exportEndDate">End Date</label>
                                 <input type="date" class="form-control" id="exportEndDate">
                             </div>
                         </div>
@@ -910,47 +901,69 @@ function showExportDialog() {
     $('body').append(dialog);
     $('#exportModal').modal('show');
 
-    // Set min and max dates for the export date inputs
-    $('#exportStartDate, #exportEndDate').attr('min', earliestTransactionDate);
-    $('#exportStartDate, #exportEndDate').attr('max', new Date().toISOString().split('T')[0]);
-
-    // Show/hide date filter fields based on radio button selection
     $('input[name="exportOption"]').change(function() {
         if ($(this).val() === 'filtered') {
-            $('#dateFilterFields').show();
+            $('#dateRangeInputs').show();
         } else {
-            $('#dateFilterFields').hide();
+            $('#dateRangeInputs').hide();
         }
     });
 
-    // Handle export confirmation
+    if (startDate && endDate) {
+        $('#exportStartDate').val(startDate.toISOString().split('T')[0]);
+        $('#exportEndDate').val(endDate.toISOString().split('T')[0]);
+    }
+
     $('#confirmExport').click(function() {
         const exportOption = $('input[name="exportOption"]:checked').val();
-        let transactionsToExport = allTransactions;
-
+        
         if (exportOption === 'filtered') {
-            const exportStartDate = new Date($('#exportStartDate').val());
-            const exportEndDate = new Date($('#exportEndDate').val());
-            exportEndDate.setHours(23, 59, 59, 999);
+            const exportStartDateValue = $('#exportStartDate').val();
+            const exportEndDateValue = $('#exportEndDate').val();
 
-            transactionsToExport = allTransactions.filter(transaction => {
-                const transactionDate = new Date(transaction.date);
-                return transactionDate >= exportStartDate && transactionDate <= exportEndDate;
-            });
+            // Check if both dates are selected
+            if (!exportStartDateValue || !exportEndDateValue) {
+                alert('Please select both start and end dates from the calendar.');
+                return;
+            }
+
+            const exportStartDate = new Date(exportStartDateValue);
+            const exportEndDate = new Date(exportEndDateValue);
+            exportEndDate.setHours(23, 59, 59, 999); // Set to end of day
+
+            const filteredTransactions = filterTransactionsByDate(allTransactions, exportStartDate, exportEndDate);
+            const dateRangeString = `${formatDate(exportStartDate)} to ${formatDate(exportEndDate)}`;
+            exportPDF(filteredTransactions, 'Filtered Transactions', dateRangeString);
+        } else {
+            // Export all transactions
+            transactionsRef.once('value')
+                .then(function(snapshot) {
+                    const allTransactions = Object.values(snapshot.val() || {});
+                    exportPDF(allTransactions, 'All Transactions');
+                })
+                .catch(function(error) {
+                    console.error("Error fetching all transactions:", error);
+                    alert("An error occurred while fetching transactions. Please try again.");
+                });
         }
-
-        exportPDF(transactionsToExport);
         $('#exportModal').modal('hide');
     });
 
-    // Clean up the modal when it's hidden
     $('#exportModal').on('hidden.bs.modal', function () {
         $(this).remove();
     });
 }
 
-// Modify the exportPDF function to accept transactions as a parameter
-function exportPDF(transactions) {
+// Update the filterTransactionsByDate function to accept start and end dates
+function filterTransactionsByDate(transactions, start, end) {
+    return transactions.filter(t => {
+        const transactionDate = new Date(t.date);
+        return transactionDate >= start && transactionDate <= end;
+    });
+}
+
+// Modify the exportPDF function to accept a dateRange parameter
+function exportPDF(transactions, title, dateRange = null) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const summary = calculateSummary(transactions);
@@ -974,7 +987,7 @@ function exportPDF(transactions) {
     doc.text("HygienexCare", 20, 25);
     doc.setFontSize(14);
     doc.setFont("helvetica", "normal");
-    doc.text("Transaction Log Report", pageWidth - 20, 25, { align: "right" });
+    doc.text(`Transaction Log Report - ${title}`, pageWidth - 20, 25, { align: "right" });
 
     // Summary section
     doc.setTextColor(0, 0, 0);
@@ -994,10 +1007,15 @@ function exportPDF(transactions) {
         doc.text(product, 35, 105 + (index * 10));
     });
 
-    // Date and Time
+    // Date Range (for filtered transactions)
+    if (dateRange) {
+        doc.text(`Date Range: ${dateRange}`, 25, 135);
+    }
+
+    // Date and Time of Report Generation
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 140);
+    doc.text(`Report Generated on: ${new Date().toLocaleString()}`, 20, 145);
 
     // Table
     doc.autoTable({
@@ -1010,7 +1028,7 @@ function exportPDF(transactions) {
             formatDate(t.date), 
             t.remaining
         ]),
-        startY: 150,
+        startY: 155,
         styles: { fillColor: [255, 255, 255] },
         columnStyles: {
             0: { cellWidth: 20 },
@@ -1028,11 +1046,6 @@ function exportPDF(transactions) {
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
-        
-        // Footer
-        doc.setFontSize(10);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 20, pageHeight - 10, { align: "right" });
         
         // Watermark
         doc.setGState(new doc.GState({opacity: 0.1}));
@@ -1068,9 +1081,14 @@ function exportPDF(transactions) {
         });
 
         doc.setGState(new doc.GState({opacity: 1}));
+
+        // Footer
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 20, pageHeight - 10, { align: "right" });
     }
 
-    doc.save("HygienexCare_Transaction_Log.pdf");
+    doc.save(`HygienexCare_Transaction_Log_${title.replace(' ', '_')}.pdf`);
 }
 
 // Update the event listener for the export button
@@ -1133,9 +1151,20 @@ document.addEventListener('DOMContentLoaded', function() {
 $(document).ready(function() {
     $('#dateFilterForm').on('submit', function(e) {
         e.preventDefault();
-        startDate = new Date($('#startDate').val());
-        endDate = new Date($('#endDate').val());
+        
+        const startDateValue = $('#startDate').val();
+        const endDateValue = $('#endDate').val();
+
+        // Check if both dates are selected
+        if (!startDateValue || !endDateValue) {
+            alert('Please select both start and end dates from the calendar.');
+            return;
+        }
+
+        startDate = new Date(startDateValue);
+        endDate = new Date(endDateValue);
         endDate.setHours(23, 59, 59, 999); // Set to end of day
+
         loadExistingTransactions();
     });
 
