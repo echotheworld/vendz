@@ -7,6 +7,9 @@ require_once __DIR__ . '/firebase-init.php';
 // Use the global $database variable
 global $database;
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 $errors = [];
 $success = '';
 
@@ -80,20 +83,124 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if (empty($errors) && !empty($updates)) {
-            $updates['first_login'] = false;
-            $usersRef->getChild($userKey)->update($updates);
-            $success = "Information updated successfully.";
-            
-            // Update session if user_id changed
-            if (isset($updates['user_id'])) {
-                $_SESSION['user_id'] = $updates['user_id'];
-            }
+            try {
+                // Generate a unique token
+                $token = bin2hex(random_bytes(16));
+                
+                // Store pending updates in Firebase
+                $pendingUpdatesRef = $database->getReference('pending_updates')->push([
+                    'user_key' => $userKey,
+                    'updates' => $updates,
+                    'token' => $token,
+                    'timestamp' => time()
+                ]);
 
-            // Redirect to dashboard after short delay
-            header("refresh:2;url=dash.php");
+                // Create verification link
+                $verificationLink = "http://localhost:8000/verify_email.php?token=" . $token;
+
+                // Send verification email using Mailtrap
+                $mail = new PHPMailer(true);
+
+                try {
+                    // Server settings
+                    $mail->isSMTP();
+                    $mail->Host       = 'live.smtp.mailtrap.io';
+                    $mail->SMTPAuth   = true;
+                    $mail->Port       = 587;
+                    $mail->Username   = 'api';
+                    $mail->Password   = '75d727a6ae7f7146372a8774770c4bbe';
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+
+                    // Recipients
+                    $mail->setFrom('hello@demomailtrap.com', 'Hygienexcare'); // Updated this line
+                    $mail->addAddress($updates['user_email'] ?? $currentUser['user_email']);
+
+                    // Content
+                    $mail->isHTML(true);
+                    $mail->Subject = "Account Email Verification";
+// HTML email body
+$mail->Body = '
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .text-logo {
+            font-size: 32px;
+            font-weight: bold;
+            color: #219130;
+            letter-spacing: 2px;
+        }
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #000;
+            margin: 20px 0;
+        }
+        .content {
+            margin-bottom: 30px;
+            color: #333;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #219130;
+            color: #ffffff !important;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="text-logo">HYGIENEXCARE</div>
+        </div>
+        <h1 class="title">Please confirm your email address</h1>
+        <div class="content">
+            Welcome to HygienexCare! You have recently created an account with a new email address. Please confirm this email address by clicking the button below.
+        </div>
+        <div class="button-container">
+            <a href="' . $verificationLink . '" class="button" style="color: #ffffff !important; background-color: #219130;">Confirm your email</a>
+        </div>
+    </div>
+</body>
+</html>';
+                    $mail->AltBody = "Click this link to verify your email and update your information: {$verificationLink}";
+
+                    if ($mail->send()) {
+                        $success = "Please check your email to verify and complete the update process.";
+                    } else {
+                        $errors['email_send'] = "Failed to send verification email. Please try again.";
+                    }
+                } catch (Exception $e) {
+                    $errors['process'] = "An error occurred while processing your request. Please try again. Error: " . $mail->ErrorInfo;
+                }
+            } catch (Exception $e) {
+                $errors['process'] = "An error occurred while processing your request. Please try again. Error: " . $e->getMessage();
+            }
         } elseif (empty($errors) && empty($updates)) {
-            $success = "No changes were made.";
-            header("refresh:2;url=dash.php");
+            $errors['no_changes'] = "No changes were made. Please update at least one field.";
         }
     }
 }
@@ -178,6 +285,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <h3>Update Information</h3>
                     </div>
 
+                    <?php if (!empty($errors)): ?>
+                        <div class="error-message">
+                            <?php 
+                            foreach ($errors as $error) {
+                                echo htmlspecialchars($error) . "<br>";
+                            }
+                            ?>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="wrap-input100 validate-input m-b-10">
                         <input class="input100 <?php echo isset($errors['user_id']) ? 'error' : ''; ?>" 
                                type="text" name="user_id" id="user_id" placeholder="Enter new username" 
@@ -232,7 +349,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </div>
 
                     <?php if ($success): ?>
-                        <div class="success-message"><?php echo htmlspecialchars($success); ?></div>
+                        <div class="success-message" id="successMessage"><?php echo htmlspecialchars($success); ?></div>
                     <?php endif; ?>
 
                     <div class="container-login100-form-btn p-t-10">
@@ -283,6 +400,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     errorTooltip.style.display = 'block';
                 }
             });
+        });
+
+        // Add this new code at the end of your script
+        document.addEventListener('DOMContentLoaded', function() {
+            const successMessage = document.getElementById('successMessage');
+            if (successMessage) {
+                setTimeout(function() {
+                    window.location.href = 'login.php';
+                }, 3000); // 3000 milliseconds = 3 seconds
+            }
         });
     </script>
 </body>
