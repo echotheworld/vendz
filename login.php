@@ -121,6 +121,112 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         .login100-form-btn:hover {
             background: #f6a400; /* Changed hover color to warm orange */
         }
+        .forget-password {
+            font-size: 14px;
+            color: #6c757d;
+            transition: color 0.3s;
+            text-decoration: none;
+        }
+
+        .forget-password:hover {
+            color: #219130;
+            text-decoration: none;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .p-t-12 {
+            padding-top: 12px;
+        }
+
+        .p-b-20 {
+            padding-bottom: 20px;
+        }
+
+        .modal-content.wrap-login100 {
+            width: 100%;
+            max-width: 400px; /* Increased width */
+            margin: 0 auto;
+            padding: 1.5rem 2rem; /* Adjusted padding */
+            border-radius: 10px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-header {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .modal-title.login-title {
+            font-weight: bold;
+            margin-bottom: 15px; /* Reduced margin */
+            font-size: 1.25rem; /* Slightly smaller font size */
+        }
+
+        #resetPasswordModal .input100 {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #666666;
+            display: block;
+            width: 100%;
+            background: #e6e6e6;
+            height: 45px; /* Slightly reduced height */
+            border-radius: 22px; /* Adjusted for new height */
+            padding: 0 20px 0 45px; /* Adjusted padding */
+        }
+
+        #resetPasswordModal .symbol-input100 {
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            position: absolute;
+            border-radius: 22px; /* Adjusted for new height */
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding-left: 15px;
+            pointer-events: none;
+            color: #666666;
+            transition: all 0.4s;
+        }
+
+        #resetPasswordModal .login100-form-btn {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #fff;
+            text-transform: uppercase;
+            width: 100%;
+            height: 45px; /* Slightly reduced height */
+            border-radius: 22px; /* Adjusted for new height */
+            background: #219130;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0 25px;
+            transition: all 0.4s;
+            border: none;
+            margin-top: 15px; /* Reduced margin */
+        }
+
+        #resetPasswordModal .login100-form-btn:hover {
+            background: #1e7e34;
+        }
+
+        .modal-header .close {
+            padding: 0.5rem;
+            margin: -0.5rem -0.5rem -0.5rem auto;
+        }
+
+        #otpSection p {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -157,6 +263,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             Login
                         </button>
                     </div>
+
+                    <!-- Add the "Forget your password?" link here -->
+                    <div class="text-right p-t-12 p-b-20">
+                        <a class="txt2 forget-password" href="#">
+                            Forget your password?
+                        </a>
+                    </div>
                 </form>
             </div>
         </div>
@@ -168,5 +281,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <script src="vendor/select2/select2.min.js"></script>
     <script src="js/main.js"></script>
     <script src="log.js"></script>
+    <!-- Add the following line to include the new reset_password.js file -->
+    <script src="reset_password.js"></script>
+
+    <!-- Add the following modal structure for the password reset process -->
+    <div class="modal fade" id="resetPasswordModal" tabindex="-1" role="dialog" aria-labelledby="resetPasswordModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content wrap-login100">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title login-title w-100 text-center" id="resetPasswordModalLabel">Reset Password</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="emailInputSection">
+                        <div class="wrap-input100 validate-input m-b-10" data-validate="Valid email is required">
+                            <input class="input100" type="email" id="resetEmail" placeholder="Enter your email" required maxlength="30">
+                            <span class="focus-input100"></span>
+                            <span class="symbol-input100">
+                                <i class="fa fa-envelope"></i>
+                            </span>
+                        </div>
+                        <div class="container-login100-form-btn">
+                            <button id="proceedBtn" class="login100-form-btn">PROCEED</button>
+                        </div>
+                    </div>
+                    <div id="otpSection" style="display: none;">
+                        <div class="container-login100-form-btn">
+                            <button id="sendOtpBtn" class="login100-form-btn">Send OTP</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
