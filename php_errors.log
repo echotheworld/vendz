@@ -640,3 +640,5 @@ Stack trace:
 [25-Oct-2024 07:37:40 UTC] Number of users fetched: 2
 [25-Oct-2024 07:37:40 UTC] Number of admins: 2
 [25-Oct-2024 07:37:42 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 609
+[25-Oct-2024 08:25:23 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 609
+[25-Oct-2024 08:26:06 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620

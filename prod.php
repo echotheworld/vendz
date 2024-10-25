@@ -183,9 +183,17 @@ function getBadgeClass($status)
         }
 
         .header .logo {
-            font-size: 24px; 
+            display: flex;
+            align-items: center;
+            font-size: 24px;
             font-weight: bold;
-            color: #369c43; 
+            color: #369c43;
+        }
+
+        .header .logo-image {
+            height: 50px; /* Adjust this value as needed */
+            width: auto;
+            margin-right: 10px;
         }
 
         .header .user-menu {
@@ -529,7 +537,10 @@ function getBadgeClass($status)
 <body>
     <!-- Header Section -->
     <header class="header">
-        <div class="logo">HygienexCare</div>
+        <div class="logo">
+            <img src="logo2.png" alt="HygienexCare Logo" class="logo-image">
+            HYGIENEXCARE
+        </div>
         <div class="user-menu">
             <span class="user-name">Hello, <?php echo htmlspecialchars($_SESSION['user_id']); ?>!</span>
             <img src="admin.jfif" alt="User Picture">
