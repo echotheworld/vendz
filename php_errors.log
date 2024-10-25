@@ -642,3 +642,8 @@ Stack trace:
 [25-Oct-2024 07:37:42 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 609
 [25-Oct-2024 08:25:23 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 609
 [25-Oct-2024 08:26:06 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620
+[25-Oct-2024 10:13:57 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620
+[25-Oct-2024 10:14:06 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620
+[25-Oct-2024 10:15:15 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620
+[25-Oct-2024 10:15:15 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620
+[25-Oct-2024 11:43:29 UTC] PHP Warning:  Undefined variable $userRole in /Users/jerichofeolino/Downloads/vendz/user.php on line 620

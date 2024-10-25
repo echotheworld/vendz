@@ -2,31 +2,26 @@
 $(document).ready(function() {
     $('#editProfileLink').on('click', function(e) {
         e.preventDefault();
-        showPasswordModal();
+        showAuthenticationDialog();
     });
 
-    function showPasswordModal() {
+    function showAuthenticationDialog() {
         const modalHTML = `
-        <div class="modal fade" id="passwordVerificationModal" tabindex="-1" role="dialog" aria-labelledby="passwordVerificationModalLabel" aria-hidden="true">
+        <div class="modal fade" id="authenticationModal" tabindex="-1" role="dialog" aria-labelledby="authenticationModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title" id="passwordVerificationModalLabel">Verify Password</h5>
+                        <h5 class="modal-title" id="authenticationModalLabel">Authentication Required</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
                     </div>
                     <div class="modal-body">
-                        <p>You're about to view and edit your account. Please enter your password to confirm:</p>
-                        <form id="passwordVerificationForm">
-                            <div class="form-group">
-                                <input type="password" class="form-control" id="verificationPassword" maxlength="20" required>
-                            </div>
-                        </form>
+                        <p>To edit your profile, we need to verify your identity. Click the button below to receive an OTP via email.</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" id="verifyPasswordBtn">Verify</button>
+                        <button type="button" class="btn btn-primary" id="sendOTPBtn">Send OTP</button>
                     </div>
                 </div>
             </div>
@@ -37,50 +32,115 @@ $(document).ready(function() {
         $('body').append(modalHTML);
 
         // Show the modal
-        $('#passwordVerificationModal').modal('show');
+        $('#authenticationModal').modal('show');
 
-        // Handle verify button click
-        $('#verifyPasswordBtn').on('click', function() {
-            const password = $('#verificationPassword').val().substring(0, 20);
-            if (password) {
-                verifyPassword(password);
-            }
-        });
-
-        // Enforce 20-character limit
-        $('#verificationPassword').on('input', function() {
-            if ($(this).val().length > 20) {
-                $(this).val($(this).val().substring(0, 20));
-            }
+        // Handle send OTP button click
+        $('#sendOTPBtn').on('click', function() {
+            $('#authenticationModal').modal('hide');
+            sendOTP();
         });
 
         // Remove modal from DOM when hidden
-        $('#passwordVerificationModal').on('hidden.bs.modal', function () {
+        $('#authenticationModal').on('hidden.bs.modal', function () {
             $(this).remove();
         });
     }
 
-    function verifyPassword(password) {
+    function sendOTP() {
         $.ajax({
-            url: 'verify_admin_password.php',
+            url: 'send_otp.php',
             type: 'POST',
-            data: { password: password },
             dataType: 'json',
             success: function(response) {
                 if (response.success) {
-                    $('#passwordVerificationModal').modal('hide');
-                    fetchUserData();
+                    showOTPModal();
                 } else {
-                    alert('Incorrect password. Please try again.');
-                    $('#verificationPassword').val(''); // Clear the password field
-                    $('#verificationPassword').focus(); // Set focus back to the password field
+                    alert('Failed to send OTP. Please try again.');
                 }
             },
             error: function(xhr, status, error) {
                 console.error('AJAX Error:', status, error);
-                alert('An error occurred while verifying the password.');
-                $('#verificationPassword').val(''); // Clear the password field
-                $('#verificationPassword').focus(); // Set focus back to the password field
+                alert('An error occurred while sending OTP.');
+            }
+        });
+    }
+
+    function showOTPModal() {
+        const modalHTML = `
+        <div class="modal fade" id="otpVerificationModal" tabindex="-1" role="dialog" aria-labelledby="otpVerificationModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="otpVerificationModalLabel">Verify OTP</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <p>An OTP has been sent to your email. Please enter the 6-digit code to confirm:</p>
+                        <form id="otpVerificationForm">
+                            <div class="form-group">
+                                <input type="text" class="form-control" id="verificationOTP" maxlength="6" required>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="verifyOTPBtn">Verify</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+
+        // Append modal to body
+        $('body').append(modalHTML);
+
+        // Show the modal
+        $('#otpVerificationModal').modal('show');
+
+        // Handle verify button click
+        $('#verifyOTPBtn').on('click', function() {
+            const otp = $('#verificationOTP').val().substring(0, 6);
+            if (otp) {
+                verifyOTP(otp);
+            }
+        });
+
+        // Enforce 6-character limit
+        $('#verificationOTP').on('input', function() {
+            if ($(this).val().length > 6) {
+                $(this).val($(this).val().substring(0, 6));
+            }
+        });
+
+        // Remove modal from DOM when hidden
+        $('#otpVerificationModal').on('hidden.bs.modal', function () {
+            $(this).remove();
+        });
+    }
+
+    function verifyOTP(otp) {
+        $.ajax({
+            url: 'verify_otp.php',
+            type: 'POST',
+            data: { otp: otp },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    $('#otpVerificationModal').modal('hide');
+                    fetchUserData();
+                } else {
+                    alert('Incorrect OTP. Please try again.');
+                    $('#verificationOTP').val(''); // Clear the OTP field
+                    $('#verificationOTP').focus(); // Set focus back to the OTP field
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', status, error);
+                alert('An error occurred while verifying the OTP.');
+                $('#verificationOTP').val(''); // Clear the OTP field
+                $('#verificationOTP').focus(); // Set focus back to the OTP field
             }
         });
     }
