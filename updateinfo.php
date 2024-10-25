@@ -408,7 +408,7 @@ $mail->Body = '
             if (successMessage) {
                 setTimeout(function() {
                     window.location.href = 'login.php';
-                }, 3000); // 3000 milliseconds = 3 seconds
+                }, 5000); // 3000 milliseconds = 3 seconds
             }
         });
     </script>
