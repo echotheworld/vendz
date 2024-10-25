@@ -2,8 +2,88 @@
 $(document).ready(function() {
     $('#editProfileLink').on('click', function(e) {
         e.preventDefault();
-        fetchUserData();
+        showPasswordModal();
     });
+
+    function showPasswordModal() {
+        const modalHTML = `
+        <div class="modal fade" id="passwordVerificationModal" tabindex="-1" role="dialog" aria-labelledby="passwordVerificationModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="passwordVerificationModalLabel">Verify Password</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <p>You're about to view and edit your account. Please enter your password to confirm:</p>
+                        <form id="passwordVerificationForm">
+                            <div class="form-group">
+                                <input type="password" class="form-control" id="verificationPassword" maxlength="20" required>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="verifyPasswordBtn">Verify</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+
+        // Append modal to body
+        $('body').append(modalHTML);
+
+        // Show the modal
+        $('#passwordVerificationModal').modal('show');
+
+        // Handle verify button click
+        $('#verifyPasswordBtn').on('click', function() {
+            const password = $('#verificationPassword').val().substring(0, 20);
+            if (password) {
+                verifyPassword(password);
+            }
+        });
+
+        // Enforce 20-character limit
+        $('#verificationPassword').on('input', function() {
+            if ($(this).val().length > 20) {
+                $(this).val($(this).val().substring(0, 20));
+            }
+        });
+
+        // Remove modal from DOM when hidden
+        $('#passwordVerificationModal').on('hidden.bs.modal', function () {
+            $(this).remove();
+        });
+    }
+
+    function verifyPassword(password) {
+        $.ajax({
+            url: 'verify_admin_password.php',
+            type: 'POST',
+            data: { password: password },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    $('#passwordVerificationModal').modal('hide');
+                    fetchUserData();
+                } else {
+                    alert('Incorrect password. Please try again.');
+                    $('#verificationPassword').val(''); // Clear the password field
+                    $('#verificationPassword').focus(); // Set focus back to the password field
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', status, error);
+                alert('An error occurred while verifying the password.');
+                $('#verificationPassword').val(''); // Clear the password field
+                $('#verificationPassword').focus(); // Set focus back to the password field
+            }
+        });
+    }
 
     function fetchUserData() {
         $.ajax({
@@ -77,12 +157,12 @@ $(document).ready(function() {
         const errors = {};
 
         // Username validation
-        const username = $('#user_id').val().trim();
+        const username = $('#user_id').val().trim().toLowerCase();
         if (username === '') {
             errors.user_id = 'Username is required';
             isValid = false;
-        } else if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-            errors.user_id = 'Username must be 3-20 characters and can only contain letters, numbers, and underscores';
+        } else if (!/^[a-z0-9]{3,15}$/.test(username)) {
+            errors.user_id = 'Username must be 3-15 characters and can only contain lowercase letters and numbers';
             isValid = false;
         }
 
@@ -110,13 +190,15 @@ $(document).ready(function() {
         const password = $('#user_pass').val();
         const confirmPassword = $('#user_pass_confirm').val();
         if (password !== '') {
-            if (password.length < 10) {
-                errors.user_pass = 'Password must be at least 10 characters long';
+            if (password.length < 8 || password.length > 20) {
+                errors.user_pass = 'Password must be 8-20 characters long';
                 isValid = false;
-            } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{10,}$/.test(password)) {
-                errors.user_pass = 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character';
+            } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?])/.test(password)) {
+                errors.user_pass = 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one symbol';
                 isValid = false;
-            } else if (password !== confirmPassword) {
+            }
+
+            if (password !== confirmPassword) {
                 errors.user_pass_confirm = 'Passwords do not match';
                 isValid = false;
             }
@@ -140,4 +222,29 @@ $(document).ready(function() {
         $('#editProfileForm')[0].reset();
         $('.error-message').remove();
     }
+
+    // Convert username to lowercase as user types
+    $('#user_id').on('input', function() {
+        $(this).val($(this).val().toLowerCase());
+    });
+
+    // Trim whitespace from inputs
+    $('input').on('blur', function() {
+        $(this).val($.trim($(this).val()));
+    });
+
+    // Limit email to 30 characters
+    $('#user_email').on('input', function() {
+        if ($(this).val().length > 30) {
+            $(this).val($(this).val().substr(0, 30));
+        }
+    });
+
+    // Ensure contact number only contains digits
+    $('#user_contact').on('input', function() {
+        $(this).val($(this).val().replace(/[^0-9]/g, ''));
+        if ($(this).val().length > 11) {
+            $(this).val($(this).val().substr(0, 11));
+        }
+    });
 });

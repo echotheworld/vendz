@@ -30,62 +30,78 @@ $usersRef = $database->getReference('tables/user');
 // Fetch all users
 $users = $usersRef->getValue();
 
+// Count the number of existing users
+$userCount = count($users);
+
 // Initialize $errors array
 $errors = [];
 
 // Handle account creation
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['createAccount'])) {
-    $role = $_POST['role'];
-    $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
-    $confirmPassword = trim($_POST['confirmPassword']);
+    // Check if the user limit has been reached
+    if ($userCount >= 5) {
+        $errors['limit'] = 'Account creation limit reached. Maximum of 5 accounts allowed.';
+    } else {
+        $role = $_POST['role'];
+        $username = trim($_POST['username']);
+        $password = trim($_POST['password']);
+        $confirmPassword = trim($_POST['confirmPassword']);
 
-    // Basic validation
-    if (empty($username)) {
-        $errors['username'] = "Username is required.";
-    }
-    if (empty($password)) {
-        $errors['password'] = "Password is required.";
-    } elseif ($password !== $confirmPassword) {
-        $errors['confirmPassword'] = "Passwords do not match!";
-    }
-
-    if (empty($errors)) {
-        // Check if username already exists
-        $usersRef = $database->getReference('tables/user');
-        $users = $usersRef->getValue();
-        
-        $userExists = false;
-        if ($users) {
-            foreach ($users as $user) {
-                if ($user['user_id'] === $username) {
-                    $userExists = true;
-                    break;
-                }
-            }
+        // Username validation
+        if (empty($username)) {
+            $errors['username'] = "Username is required.";
+        } elseif (!preg_match('/^[a-zA-Z0-9]{3,15}$/', $username)) {
+            $errors['username'] = "Username must be 3-15 characters long, containing only letters and numbers.";
         }
 
-        if ($userExists) {
-            $errors['username'] = "Username already exists.";
-        } else {
-            // Create new user
-            $newUser = [
-                'first_login' => true,
-                'u_role' => $role,
-                'user_contact' => '',
-                'user_email' => '',
-                'user_id' => $username,
-                'user_pass' => password_hash($password, PASSWORD_DEFAULT)
-            ];
-            // After successfully creating a new user (around line 81)
-            addLogEntry($_SESSION['user_id'], 'Added New Account', "Added **{$username}** as **{$role}**");
+        // Password validation
+        if (empty($password)) {
+            $errors['password'] = "Password is required.";
+        } elseif (strlen($password) < 8 || strlen($password) > 20) {
+            $errors['password'] = "Password must be 8-20 characters long.";
+        } elseif (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?])/', $password)) {
+            $errors['password'] = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one symbol.";
+        }
 
-            $usersRef->push($newUser);
-            echo "<script>
-                alert('Account created successfully.');
-                window.location.href = window.location.href.split('?')[0];
-            </script>";
-            exit;
+        // Password match validation
+        if ($password !== $confirmPassword) {
+            $errors['confirmPassword'] = "Passwords do not match.";
+        }
+
+        if (empty($errors)) {
+            // Check if username already exists
+            $userExists = false;
+            if ($users) {
+                foreach ($users as $user) {
+                    if ($user['user_id'] === $username) {
+                        $userExists = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($userExists) {
+                $errors['username'] = "Username already exists.";
+            } else {
+                // Create new user
+                $newUser = [
+                    'first_login' => true,
+                    'u_role' => $role,
+                    'user_contact' => '',
+                    'user_email' => '',
+                    'user_id' => $username,
+                    'user_pass' => password_hash($password, PASSWORD_DEFAULT)
+                ];
+                $userCount++;
+                addLogEntry($_SESSION['user_id'], 'Added New Account', "Added **{$username}** as **{$role}**");
+
+                $usersRef->push($newUser);
+                $_SESSION['success_message'] = "Account created successfully." . ($userCount == 5 ? "" : "");
+                
+                // Redirect to the same page to reload
+                header("Location: " . $_SERVER['PHP_SELF']);
+                exit();
+            }
         }
     }
 }
@@ -548,6 +564,29 @@ if (isset($_POST['updateRole'])) {
             border-style: solid;
             border-color: transparent transparent #333 transparent;
         }
+
+        .alert {
+            padding: 5px 10px;
+            margin-bottom: 10px;
+        }
+
+        .alert p {
+            margin-bottom: 0;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            border: none;
+            color: #721c24;
+            padding: 8px 12px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+
+        .alert-danger p {
+            margin-bottom: 0;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -589,6 +628,14 @@ if (isset($_POST['updateRole'])) {
                                     <h3>Create New Account</h3>
                                 </div>
                                 <div class="card-body">
+                                    <!-- Display success message if any -->
+                                    <?php if (isset($_SESSION['success_message'])): ?>
+                                        <div class="alert alert-success">
+                                            <p><?php echo htmlspecialchars($_SESSION['success_message']); ?></p>
+                                        </div>
+                                        <?php unset($_SESSION['success_message']); // Clear the message after displaying ?>
+                                    <?php endif; ?>
+
                                     <!-- Display errors if any -->
                                     <?php if (!empty($errors)): ?>
                                         <div class="alert alert-danger">
@@ -599,7 +646,7 @@ if (isset($_POST['updateRole'])) {
                                     <?php endif; ?>
 
                                     <!-- Account creation form -->
-                                    <form method="POST" action="">
+                                    <form method="POST" action="" id="createAccountForm">
                                         <div class="form-group">
                                             <label for="role">Role:</label>
                                             <select class="form-control" id="role" name="role">
@@ -609,15 +656,17 @@ if (isset($_POST['updateRole'])) {
                                         </div>
                                         <div class="form-group">
                                             <label for="username">Username:</label>
-                                            <input type="text" class="form-control" id="username" name="username" required>
+                                            <input type="text" class="form-control" id="username" name="username" minlength="3" maxlength="15" pattern="[a-zA-Z0-9]{3,15}" required>
+                                            <small class="form-text text-muted">Username must be 3-15 characters long, containing only letters and numbers.</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="password">Password:</label>
-                                            <input type="password" class="form-control" id="password" name="password" required>
+                                            <input type="password" class="form-control" id="password" name="password" maxlength="20" required>
+                                            <small class="form-text text-muted">Password must contain at least one uppercase letter, one lowercase letter, one number, and one symbol.</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="confirmPassword">Confirm Password:</label>
-                                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
+                                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" maxlength="20" required>
                                         </div>
                                         <button type="submit" class="btn btn-primary" name="createAccount">Create Account</button>
                                     </form>
@@ -763,6 +812,38 @@ if (isset($_POST['updateRole'])) {
                     });
                 }
             });
+
+            // Username input validation and conversion to lowercase
+            $('#username').on('input', function() {
+                var input = $(this);
+                var value = input.val().toLowerCase(); // Convert to lowercase immediately
+                input.val(value); // Set the lowercase value back to the input
+
+                // Then perform sanitization
+                var sanitized = value.replace(/[^a-z0-9]/g, '').substr(0, 15);
+                if (value !== sanitized) {
+                    input.val(sanitized);
+                }
+            });
+
+            // Password validation
+            $('#password, #confirmPassword').on('input', function() {
+                var input = $(this);
+                var value = input.val();
+                if (value.length > 20) {
+                    input.val(value.substr(0, 20));
+                }
+            });
+
+            // Remove form submission JavaScript validation
+            $('form').off('submit');
+
+            // Check user count and disable form if limit reached
+            var userCount = <?php echo $userCount; ?>;
+            if (userCount >= 5) {
+                $('#createAccountForm').find('input, select, button').prop('disabled', true);
+                $('#createAccountForm').append('<p class="text-danger">Account creation limit reached. Maximum of 5 accounts allowed.</p>');
+            }
         });
     </script>
     <?php include 'edit_profile_modal.php'; ?>
