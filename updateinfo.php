@@ -161,6 +161,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             border-style: solid;
             border-color: transparent #d9534f transparent transparent;
         }
+        .login100-form-btn {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #fff;
+            text-transform: uppercase;
+            width: 100%;
+            height: 50px;
+            border-radius: 25px;
+            background-color: #219130;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0 25px;
+            transition: all 0.4s;
+            border: none;
+        }
+        .login100-form-btn:hover {
+            background-color: #1a7326;
+        }
     </style>
 </head>
 <body>

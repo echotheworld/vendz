@@ -89,17 +89,49 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             background-color: #fff;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
+        .logo-container {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .logo-container img {
+            max-width: 150px;
+            height: auto;
+        }
+        .login-title {
+            text-align: center;
+            margin-bottom: 50px;
+            font-weight: bold;
+        }
+        .login100-form-btn {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #fff;
+            text-transform: uppercase;
+            width: 100%;
+            height: 50px;
+            border-radius: 25px;
+            background: #219130;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0 25px;
+            transition: all 0.4s;
+            border: none;
+        }
+        .login100-form-btn:hover {
+            background: #f6a400; /* Changed hover color to warm orange */
+        }
     </style>
 </head>
 <body>
     <div class="limiter">
         <div class="container-login100"> 
             <div class="wrap-login100">
+                <div class="logo-container">
+                    <img src="logo1.png" alt="Logo">
+                </div>
+                <h3 class="login-title">LOG-IN</h3>
                 <form method="post" action="" class="login100-form validate-form">
-                    <div class="login100-form-avatar">
-                        <h3>LOG-IN</h3>
-                    </div>
-
                     <div class="wrap-input100 validate-input m-b-10" data-validate="Username is required">
                         <input class="input100" type="text" name="user_id" placeholder="Username" required>
                         <span class="focus-input100"></span>
