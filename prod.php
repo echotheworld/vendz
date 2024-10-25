@@ -693,11 +693,13 @@ function getBadgeClass($status)
             showLoading();
             checkESP32Presence().then(function(isConnected) {
                 if (isConnected) {
-                    // Proceed with the update
                     var updates = {};
                     updates['/tables/products/' + productData.product_id] = productData;
                     firebase.database().ref().update(updates).then(function() {
                         hideLoading();
+                        // Log the changes
+                        var changeDetails = generateChangeDetails(productData);
+                        addLogEntry(productData.product_identity, 'Updated Product', changeDetails);
                         reloadWithAlert('Product updated successfully.', true);
                     }).catch(function(error) {
                         hideLoading();
@@ -706,6 +708,38 @@ function getBadgeClass($status)
                 } else {
                     hideLoading();
                     reloadWithAlert('Unable to connect to the device. Please check your device connection and try again.', false);
+                }
+            });
+        }
+
+        function generateChangeDetails(productData) {
+            var changes = [];
+            if (productData.product_name !== $('#editProductName').data('original')) {
+                changes.push(`**NAME** updated to '${productData.product_name}'`);
+            }
+            if (productData.product_quantity !== $('#editProductQuantity').data('original')) {
+                changes.push(`**QTY** adjusted to ${productData.product_quantity}`);
+            }
+            if (productData.product_price !== $('#editProductPrice').data('original')) {
+                changes.push(`**PRICE** modified to ${productData.product_price}`);
+            }
+            return changes.join(". ");
+        }
+
+        function addLogEntry(productIdentity, action, details) {
+            $.ajax({
+                url: 'add_log_entry.php',
+                type: 'POST',
+                data: {
+                    username: '<?php echo $_SESSION['user_id']; ?>',
+                    action: action,
+                    details: `**${productIdentity}**: ${details}`
+                },
+                success: function(response) {
+                    console.log('Log entry added successfully');
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error adding log entry:', error);
                 }
             });
         }
@@ -766,9 +800,9 @@ function getBadgeClass($status)
         function openEditModal(productId, productName, productQuantity, productPrice, productIdentity) {
             $('#editProductId').val(productId);
             $('#editProductIdentity').val(productIdentity);
-            $('#editProductName').val(productName);
-            $('#editProductQuantity').val(productQuantity);
-            $('#editProductPrice').val(Math.round(productPrice)); // Round to nearest integer
+            $('#editProductName').val(productName).data('original', productName);
+            $('#editProductQuantity').val(productQuantity).data('original', productQuantity);
+            $('#editProductPrice').val(Math.round(productPrice)).data('original', Math.round(productPrice));
             $('#editProductModal').modal('show');
             setupEditModalValidation();
         }
