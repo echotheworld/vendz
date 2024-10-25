@@ -818,17 +818,22 @@ foreach ($users as $key => $user) {
         // Function to update transaction chart and total income
         function updateTransactionChart(snapshot) {
             const transactions = snapshot.val() || {};
-            const timeRange = document.getElementById('timeRange').value;
-            const endDate = new Date();
-            const startDate = new Date(endDate);
-            startDate.setDate(startDate.getDate() - parseInt(timeRange));
+            const timeRange = parseInt(document.getElementById('timeRange').value);
+            
+            // Find the latest transaction date
+            let latestDate = new Date(Math.max(...Object.values(transactions).map(t => new Date(t.date))));
+            let startDate = new Date(latestDate);
+            startDate.setDate(startDate.getDate() - timeRange + 1);
+
+            console.log('Date range:', startDate.toISOString().split('T')[0], 'to', latestDate.toISOString().split('T')[0]);
 
             const dailyTransactions = {
                 'Product 1': {},
                 'Product 2': {}
             };
 
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            // Initialize dailyTransactions with all dates in range
+            for (let d = new Date(startDate); d <= latestDate; d.setDate(d.getDate() + 1)) {
                 const dateString = d.toISOString().split('T')[0];
                 dailyTransactions['Product 1'][dateString] = 0;
                 dailyTransactions['Product 2'][dateString] = 0;
@@ -839,10 +844,14 @@ foreach ($users as $key => $user) {
             Object.values(transactions).forEach(transaction => {
                 const transactionDate = transaction.date;
                 const productIdentity = transaction.product_identity;
-                if (transactionDate in dailyTransactions[productIdentity]) {
+                
+                if (productIdentity in dailyTransactions && transactionDate in dailyTransactions[productIdentity]) {
                     dailyTransactions[productIdentity][transactionDate]++;
+                    totalIncome += parseFloat(transaction.amount) || 0;
+                    console.log('Transaction counted:', transactionDate, productIdentity);
+                } else {
+                    console.log('Transaction not counted:', transactionDate, productIdentity);
                 }
-                totalIncome += parseFloat(transaction.amount) || 0;
             });
 
             const labels = Object.keys(dailyTransactions['Product 1']);

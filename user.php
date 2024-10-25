@@ -140,17 +140,19 @@ if (isset($_POST['deleteAccount'])) {
         
         error_log("Number of admins: " . $adminCount);
 
-        // Inside the deleteAccount POST handler (around line 127)
-addLogEntry($_SESSION['user_id'], 'Removed an Account', "Removed **{$userToDelete['user_id']}** as **{$userToDelete['u_role']}**");
+        // Inside the deleteAccount POST handler (around line 145-154)
+        if ($userToDelete['user_id'] === $_SESSION['user_id']) {
+            // Only add the self-removal log entry
+            addLogEntry($_SESSION['user_id'], 'Account Self-Removal', "**{$_SESSION['user_id']}** removed themselves as **{$userToDelete['u_role']}**");
+        } else {
+            // For other users, keep the existing log entry
+            addLogEntry($_SESSION['user_id'], 'Removed an Account', "Removed **{$userToDelete['user_id']}** as **{$userToDelete['u_role']}**");
+        }
 
         // Check if this is not the last admin
         if ($userToDelete['u_role'] !== 'admin' || $adminCount > 1) {
             $usersRef->getChild($key)->remove();
-            
-            // Inside the deleteAccount POST handler, before redirecting (around line 133)
-            if ($userToDelete['user_id'] === $_SESSION['user_id']) {
-                addLogEntry($_SESSION['user_id'], 'Account Self-Removal', "**{$_SESSION['user_id']}** removed themselves as **{$userToDelete['u_role']}**");
-            }
+        
 
             // Check if the user was actually deleted
             $updatedUsers = $usersRef->getValue();

@@ -1,0 +1,117 @@
+{
+  "activity_logs": {
+    "-OA3PR2oAM4hQWuvuhqS": {
+      "action": "Updated Product",
+      "details": "**Product 1**: **NAME** updated to 'Napkin'. **QTY** adjusted to 5. **PRICE** modified to 5",
+      "timestamp": 1729872117,
+      "username": "echo"
+    },
+    "-OA3PguA8alrDYYNxx3M": {
+      "action": "Updated Product",
+      "details": "**Product 2**: **NAME** updated to 'Wipes'. **QTY** adjusted to 10. **PRICE** modified to 5",
+      "timestamp": 1729872186,
+      "username": "echo"
+    },
+    "-OA3QIZKcACMUAaYiRps": {
+      "action": "Added New Account",
+      "details": "Added **juan** as **viewer**",
+      "timestamp": 1729872345,
+      "username": "echo"
+    },
+    "-OA3QOSw-cee2lClP1MP": {
+      "action": "Changed Account Role",
+      "details": "Changed **juan's** role into **admin**",
+      "timestamp": 1729872369,
+      "username": "echo"
+    },
+    "-OA3QdE7DnTZ3V-sCSnu": {
+      "action": "Removed an Account",
+      "details": "Removed **echo** as **admin**",
+      "timestamp": 1729872433,
+      "username": "echo"
+    },
+    "-OA3QdMaNz7GmMhvRXbM": {
+      "action": "Account Self-Removal",
+      "details": "**echo** removed themselves as **admin**",
+      "timestamp": 1729872434,
+      "username": "echo"
+    },
+    "-OA3STOcYgG9RyReP6US": {
+      "action": "Updated Product",
+      "details": "**Product 1**: **QTY** adjusted to 2",
+      "timestamp": 1729872913,
+      "username": "echo"
+    }
+  },
+  "esp32_presence": 1,
+  "tables": {
+    "products": {
+      "-O8GSb1L_mn9CLR1Z0Ly": {
+        "product_id": "-O8GSb1L_mn9CLR1Z0Ly",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "product_price": 5,
+        "product_quantity": 0
+      },
+      "-O8GSldDvFUT5olxHCiX": {
+        "product_id": "-O8GSldDvFUT5olxHCiX",
+        "product_identity": "Product 2",
+        "product_name": "Wipes",
+        "product_price": 5,
+        "product_quantity": 9
+      }
+    },
+    "transactions": {
+      "3f45c50d": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "remaining": 1,
+        "time": "00:15:49"
+      },
+      "52643a10": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "remaining": 0,
+        "time": "00:16:18"
+      },
+      "97a071f5": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "remaining": 3,
+        "time": "00:11:19"
+      },
+      "bde64411": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 1",
+        "product_name": "Napkin",
+        "remaining": 4,
+        "time": "00:10:40"
+      },
+      "ea9dad9c": {
+        "amount": 5,
+        "date": "2024-10-26",
+        "product_identity": "Product 2",
+        "product_name": "Wipes",
+        "remaining": 9,
+        "time": "00:11:51"
+      }
+    },
+    "user": {
+      "-OA3QIbXCenYatR1RMFr": {
+        "first_login": false,
+        "u_role": "admin",
+        "user_contact": "09542568541",
+        "user_email": "jrchxjn@gmail.com",
+        "user_id": "echo",
+        "user_pass": "$2y$10$3ibrpCw/3tqncEkxuYJ4Vuurp.odsZa7vo3GcFJYYlHO2HhM0HkL6"
+      }
+    }
+  }
+}
